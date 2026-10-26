@@ -53,8 +53,8 @@ with an evidence phrase that must appear in the retrieved chunk.
 | Metric | Result |
 |---|---:|
 | Correctness (answerable questions) | 96.6% (56 / 58) |
-| Faithfulness to the sources | 89.7% (52 / 58) |
-| Citation accuracy | 98.3% (57 / 58) |
+| Faithfulness to the sources | 94.8% (55 / 58) |
+| Citation accuracy | 100% (58 / 58) |
 | Refusal accuracy (unanswerable questions) | 100% (12 / 12) |
 | Latency p50 / p95 | 28.8 s / 40.2 s |
 | Tokens per question (in / out) | 790 / 23 |
@@ -62,9 +62,15 @@ with an evidence phrase that must appear in the retrieved chunk.
 
 - **Every unanswerable question got "I don't know"**, including the 7 near-misses
   that got past the search cutoff, so the prompt handles what the cutoff can't.
-- **Faithfulness is the weakest score:** the judge marked 6 answers as not fully
+- **Faithfulness is the weakest score:** the judge marked 3 answers as not fully
   supported by the sources. Small models tend to add details, and the judge is
   the same small model, so treat this number as approximate.
+- **Fixing the grader raised faithfulness from 89.7% to 94.8%.** Reading the
+  failures showed the judge, not the answers, was often wrong: it marked
+  paraphrases as incorrect and true extra details from the sources as made up.
+  Clearer judge instructions with worked examples fixed that, and letting a
+  question accept more than one evidence passage fixed a citation that pointed
+  to a second valid page (98.3% → 100%). The answers themselves didn't change.
 - **Latency is almost all generation** on a laptop CPU; search and reranking take
   about 2 seconds of it.
 
@@ -170,10 +176,12 @@ start. Set `RAG_JWT_SECRET` to a long random value before exposing it anywhere.
 ```bash
 python -m evaluation.run retrieval
 python -m evaluation.run answers
+python -m evaluation.run regrade
 ```
 
 The first command needs no LLM. The second needs Ollama running and takes a few
-minutes. Results are saved to `evaluation/results/` and shown on the dashboard.
+minutes. The third grades the saved answers again without regenerating them, which
+is useful after changing the judge. Results are saved to `evaluation/results/` and shown on the dashboard.
 Questions live in `evaluation/questions.jsonl`.
 
 ## Tests

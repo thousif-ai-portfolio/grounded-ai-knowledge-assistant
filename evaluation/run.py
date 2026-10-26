@@ -2,6 +2,7 @@
 
     python -m evaluation.run retrieval            # search quality only, no LLM needed
     python -m evaluation.run answers              # full answers, needs Ollama running
+    python -m evaluation.run regrade              # grade the saved answers again
     python -m evaluation.run retrieval --min-recall 0.8   # fail (exit 1) below a threshold
 
 The documents in data/sample_docs are indexed into a temporary folder, so your own
@@ -10,6 +11,7 @@ uploaded documents are never touched.
 
 import argparse
 import json
+import re
 import sys
 import tempfile
 import time
@@ -132,20 +134,61 @@ def evaluate_answers(
             "output_tokens": answer.output_tokens,
         }
         if item.answerable and not refused:
-            row["citation_hit"] = any(
-                is_relevant(item, c.filename, c.text) for c in answer.citations
-            )
-            sources = [h.text for h in rag.retrieve(item.question, top_k=K, mode=mode)]
-            verdict = judge_answer(
-                rag.llm, item.question, sources, answer.answer, item.reference or ""
-            )
-            row |= {
-                "faithful": verdict.faithful,
-                "correct": verdict.correct,
-                "judge_parsed": verdict.parsed,
-            }
+            row |= grade(rag, item, answer.answer, mode)
         rows.append(row)
+    return summarize(rows, settings, mode)
 
+
+def grade(rag: RagService, item: EvalItem, answer: str, mode: SearchMode) -> dict:
+    """Citation check and judge verdict for one answer to an answerable question."""
+    # Retrieval is deterministic, so these are the same numbered sources the answer saw.
+    hits = rag.retrieve(item.question, top_k=K, mode=mode)
+    cited = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
+    citation_hit = any(
+        is_relevant(item, hit.filename, hit.text) for n, hit in enumerate(hits, 1) if n in cited
+    )
+    verdict = judge_answer(
+        rag.llm, item.question, [h.text for h in hits], answer, item.reference or ""
+    )
+    return {
+        "citation_hit": citation_hit,
+        "faithful": verdict.faithful,
+        "correct": verdict.correct,
+        "judge_parsed": verdict.parsed,
+    }
+
+
+def regrade_answers(
+    rag: RagService, settings: Settings, items: list[EvalItem], saved: dict
+) -> dict:
+    """Grade saved answers again (after changing the judge or the labels) without
+    generating them again, which is the slow half of the answer benchmark."""
+    mode = SearchMode(saved["mode"])
+    by_id = {item.id: item for item in items}
+    rows = []
+    for n, old in enumerate(saved["per_question"], 1):
+        print(f"  [{n}/{len(saved['per_question'])}] {old['id']}", flush=True)
+        item = by_id[old["id"]]
+        row = {key: old[key] for key in ANSWER_FIELDS}
+        if item.answerable and not row["refused"]:
+            row |= grade(rag, item, row["answer"], mode)
+        rows.append(row)
+    return summarize(rows, settings, mode)
+
+
+ANSWER_FIELDS = (
+    "id",
+    "type",
+    "question",
+    "answer",
+    "refused",
+    "latency_ms",
+    "input_tokens",
+    "output_tokens",
+)
+
+
+def summarize(rows: list[dict], settings: Settings, mode: SearchMode) -> dict:
     answerable = [r for r in rows if r["type"] != "unanswerable"]
     answered = [r for r in answerable if not r["refused"]]
     unanswerable = [r for r in rows if r["type"] == "unanswerable"]
@@ -196,7 +239,7 @@ def print_retrieval(report: dict) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="python -m evaluation.run")
-    parser.add_argument("target", choices=["retrieval", "answers"])
+    parser.add_argument("target", choices=["retrieval", "answers", "regrade"])
     parser.add_argument("--mode", choices=[m.value for m in SearchMode], default=None)
     parser.add_argument(
         "--min-recall",
@@ -227,10 +270,19 @@ def main() -> int:
                 return 1
             return 0
 
-        mode = SearchMode(args.mode or settings.search_mode)
-        print(f"Answering {len(items)} questions with {settings.llm_model} ({mode})...")
         try:
-            report = header | evaluate_answers(rag, settings, items, mode)
+            if args.target == "regrade":
+                answers_path = RESULTS_DIR / "answers.json"
+                if not answers_path.exists():
+                    print("No saved answers: run `python -m evaluation.run answers` first.")
+                    return 1
+                saved = json.loads(answers_path.read_text(encoding="utf-8"))
+                print(f"Grading saved answers with {settings.llm_model}...")
+                report = header | regrade_answers(rag, settings, items, saved)
+            else:
+                mode = SearchMode(args.mode or settings.search_mode)
+                print(f"Answering {len(items)} questions with {settings.llm_model} ({mode})...")
+                report = header | evaluate_answers(rag, settings, items, mode)
         except LLMError as exc:
             print(exc, file=sys.stderr)
             return 1

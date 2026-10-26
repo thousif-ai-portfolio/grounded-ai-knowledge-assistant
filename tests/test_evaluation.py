@@ -29,7 +29,8 @@ def test_every_evidence_phrase_exists_in_its_source(item: EvalItem):
     """Guards the labels: a typo in an evidence phrase would silently lower recall."""
     path = DOCS / item.source
     text = " ".join(page.text for page in extract_pages(path.name, path.read_bytes()))
-    assert normalize(item.evidence) in normalize(text)
+    for phrase in item.evidence_phrases:
+        assert normalize(phrase) in normalize(text)
 
 
 def hit(filename: str, text: str) -> SearchHit:
@@ -42,6 +43,13 @@ def test_first_relevant_rank_needs_matching_file_and_phrase():
 
     assert first_relevant_rank(item, hits) == 3
     assert first_relevant_rank(item, hits[:2]) is None
+
+
+def test_any_evidence_phrase_makes_a_chunk_relevant():
+    item = EvalItem("x", "q?", "natural", source="a.md", evidence=["expires", "valid for"])
+    hits = [hit("a.md", "nothing"), hit("a.md", "Tokens are valid for 12 hours")]
+
+    assert first_relevant_rank(item, hits) == 2
 
 
 def test_recall_and_mrr():

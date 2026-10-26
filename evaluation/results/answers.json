@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-26T09:29:40+00:00",
+  "generated_at": "2026-10-26T11:29:48+00:00",
   "config": {
     "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
     "rerank_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
@@ -14,8 +14,8 @@
   "metrics": {
     "answered_rate": 1.0,
     "correctness": 0.9655172413793104,
-    "faithfulness": 0.896551724137931,
-    "citation_accuracy": 0.9827586206896551,
+    "faithfulness": 0.9482758620689655,
+    "citation_accuracy": 1.0,
     "refusal_accuracy": 1.0,
     "judge_parse_failures": 0,
     "latency_p50_ms": 28775.2,
@@ -105,7 +105,7 @@
       "input_tokens": 936,
       "output_tokens": 31,
       "citation_hit": true,
-      "faithful": false,
+      "faithful": true,
       "correct": false,
       "judge_parsed": true
     },
@@ -301,7 +301,7 @@
       "input_tokens": 876,
       "output_tokens": 48,
       "citation_hit": true,
-      "faithful": false,
+      "faithful": true,
       "correct": true,
       "judge_parsed": true
     },
@@ -497,7 +497,7 @@
       "input_tokens": 877,
       "output_tokens": 33,
       "citation_hit": true,
-      "faithful": false,
+      "faithful": true,
       "correct": true,
       "judge_parsed": true
     },
@@ -651,8 +651,8 @@
       "input_tokens": 868,
       "output_tokens": 27,
       "citation_hit": true,
-      "faithful": false,
-      "correct": false,
+      "faithful": true,
+      "correct": true,
       "judge_parsed": true
     },
     {
@@ -762,7 +762,7 @@
       "latency_ms": 36699.5,
       "input_tokens": 779,
       "output_tokens": 38,
-      "citation_hit": false,
+      "citation_hit": true,
       "faithful": true,
       "correct": true,
       "judge_parsed": true
@@ -791,7 +791,7 @@
       "input_tokens": 786,
       "output_tokens": 32,
       "citation_hit": true,
-      "faithful": true,
+      "faithful": false,
       "correct": true,
       "judge_parsed": true
     },
@@ -834,7 +834,7 @@
       "output_tokens": 29,
       "citation_hit": true,
       "faithful": false,
-      "correct": true,
+      "correct": false,
       "judge_parsed": true
     },
     {

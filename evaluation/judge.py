@@ -6,14 +6,31 @@ from dataclasses import dataclass
 
 from app.llm import LLM
 
+# A 3B judge marked correct answers wrong when they were worded differently from the
+# reference or added true details from the sources, so the rules and examples below
+# spell out that both are fine.
 JUDGE_SYSTEM = """You grade answers produced by a question-answering system.
 
-You get the sources the system was given, its answer, and a reference answer.
+You get the sources the system was given, its answer, and a short reference answer.
 Reply with only a JSON object, no other text:
 {"faithful": true or false, "correct": true or false}
 
-- faithful: every factual claim in the answer is supported by the sources.
-- correct: the answer agrees with the reference answer (wording may differ)."""
+correct: true when the answer contains the key fact of the reference answer.
+- Different wording, extra explanation and extra true details are fine.
+- false only when the key fact is missing or contradicted.
+
+faithful: true when the facts in the answer can be found in the sources.
+- Paraphrases and summaries of the sources count as supported.
+- Citation markers like [1] and phrases like "according to the sources" are fine.
+- false only when the answer states a fact that is not in the sources or contradicts them.
+
+Example. Reference: "12 hours." Answer: "Access tokens are valid for 12 hours, so you
+sign in twice a day. [1]" Sources say tokens are valid for 12 hours and a new sign-in
+is needed twice a day.
+{"faithful": true, "correct": true}
+
+Example. Reference: "12 hours." Answer: "Tokens last 24 hours. [1]"
+{"faithful": false, "correct": false}"""
 
 
 @dataclass(frozen=True)
