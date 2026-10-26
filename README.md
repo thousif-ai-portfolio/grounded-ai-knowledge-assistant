@@ -242,5 +242,8 @@ deploy/         Hugging Face Space setup
 - **The answer judge is the same small model** that writes the answers; a stronger
   judge would give more reliable faithfulness scores.
 - **Scanned PDFs aren't supported** (they need OCR).
+- **The answer scores above predate the latest prompt change**, which helps the model
+  handle informal questions like *"E1042 can i know what is this"*. Very short
+  fragments can still get "I don't know" from the small 3B model.
 - **Not run yet:** the Docker image and the Hugging Face deployment. The Docker
   image is built by CI on every push.
