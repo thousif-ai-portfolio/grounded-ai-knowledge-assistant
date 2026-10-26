@@ -1,7 +1,7 @@
 """Use the assistant from the terminal, without starting the API.
 
-    python -m app.cli ingest data/sample_docs
-    python -m app.cli ask "What is chunk overlap?"
+python -m app.cli ingest data/sample_docs
+python -m app.cli ask "What is chunk overlap?"
 """
 
 import argparse
@@ -13,6 +13,7 @@ from app.ingest import SUPPORTED_EXTENSIONS, UnsupportedFileError
 from app.llm import LLMError
 from app.main import build_service
 from app.rag import EmptyDocumentError
+from app.retrieval import SearchMode
 
 
 def _files(paths: list[str]) -> list[Path]:
@@ -34,6 +35,7 @@ def main() -> int:
     ingest.add_argument("paths", nargs="+")
     ask = commands.add_parser("ask", help="Ask a question")
     ask.add_argument("question")
+    ask.add_argument("--mode", choices=[m.value for m in SearchMode], default=None)
     args = parser.parse_args()
 
     rag = build_service(get_settings())
@@ -50,7 +52,7 @@ def main() -> int:
         return 0
 
     try:
-        answer = rag.ask(args.question)
+        answer = rag.ask(args.question, mode=args.mode)
     except LLMError as exc:
         print(exc, file=sys.stderr)
         return 1

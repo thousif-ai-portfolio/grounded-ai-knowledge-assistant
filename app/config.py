@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     chunk_size: int = 800
     chunk_overlap: int = 150
     top_k: int = 5
+
+    # semantic | hybrid | hybrid_rerank (see app/retrieval.py)
+    search_mode: str = "hybrid_rerank"
+    # How many results each search method contributes before fusion and reranking.
+    candidates: int = 20
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     # Chunks less similar than this (cosine, 0-1) are ignored, so off-topic
     # questions get "I don't know" instead of a guess.
     min_score: float = 0.25

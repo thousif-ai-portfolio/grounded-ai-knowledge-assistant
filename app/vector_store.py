@@ -51,8 +51,7 @@ class ChromaStore:
                 embeddings=embeddings[start : start + _ADD_BATCH_SIZE],
                 documents=[chunk.text for chunk in batch],
                 metadatas=[
-                    {"doc_id": doc_id, "filename": filename, "page": chunk.page}
-                    for chunk in batch
+                    {"doc_id": doc_id, "filename": filename, "page": chunk.page} for chunk in batch
                 ],
             )
 
@@ -85,6 +84,23 @@ class ChromaStore:
                 )
             )
         return hits
+
+    def all_chunks(self) -> list[SearchHit]:
+        """Every stored chunk (score 0), used to build the keyword index."""
+        result = self._collection.get(include=["documents", "metadatas"])
+        return [
+            SearchHit(
+                chunk_id=chunk_id,
+                text=text,
+                doc_id=str(meta["doc_id"]),
+                filename=str(meta["filename"]),
+                page=int(meta["page"]),
+                score=0.0,
+            )
+            for chunk_id, text, meta in zip(
+                result["ids"], result["documents"], result["metadatas"], strict=True
+            )
+        ]
 
     def list_documents(self) -> list[DocumentInfo]:
         docs: dict[str, dict] = {}

@@ -7,6 +7,7 @@ import re
 import pytest
 
 from app.config import Settings
+from app.llm import Generation
 from app.rag import RagService
 from app.vector_store import ChromaStore
 
@@ -28,15 +29,31 @@ class FakeEmbedder:
 
 
 class FakeLLM:
+    model = "fake-model"
+
     def __init__(self, reply: str | Exception = "Chunk overlap repeats text [1].") -> None:
         self.reply = reply
         self.prompts: list[str] = []
 
-    def generate(self, system: str, prompt: str) -> str:
+    def generate(self, system: str, prompt: str) -> Generation:
         self.prompts.append(prompt)
         if isinstance(self.reply, Exception):
             raise self.reply
-        return self.reply
+        return Generation(self.reply, input_tokens=len(prompt.split()), output_tokens=5)
+
+
+class FakeReranker:
+    """Scores a passage by how many times it contains `favourite`, so tests control order."""
+
+    def __init__(self, favourite: str = "") -> None:
+        self.favourite = favourite
+        self.calls = 0
+
+    def score(self, query: str, texts: list[str]) -> list[float]:
+        self.calls += 1
+        return [
+            float(text.lower().count(self.favourite)) if self.favourite else 0.0 for text in texts
+        ]
 
 
 @pytest.fixture
@@ -50,6 +67,13 @@ def llm() -> FakeLLM:
 
 
 @pytest.fixture
-def rag(settings, llm) -> RagService:
+def reranker() -> FakeReranker:
+    return FakeReranker()
+
+
+@pytest.fixture
+def rag(settings, llm, reranker) -> RagService:
     store = ChromaStore(settings.data_dir, settings.collection_name)
-    return RagService(embedder=FakeEmbedder(), store=store, llm=llm, settings=settings)
+    return RagService(
+        embedder=FakeEmbedder(), store=store, llm=llm, settings=settings, reranker=reranker
+    )

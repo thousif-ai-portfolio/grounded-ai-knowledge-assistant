@@ -9,6 +9,7 @@ from app.embeddings import SentenceTransformerEmbedder
 from app.ingest import UnsupportedFileError
 from app.llm import LLMError, create_llm
 from app.rag import EmptyDocumentError, RagService
+from app.retrieval import CrossEncoderReranker
 from app.schemas import AskIn, AskOut, DocumentOut, UploadOut
 from app.vector_store import ChromaStore
 
@@ -19,6 +20,7 @@ def build_service(settings: Settings) -> RagService:
         store=ChromaStore(settings.data_dir, settings.collection_name),
         llm=create_llm(settings),
         settings=settings,
+        reranker=CrossEncoderReranker(settings.rerank_model),
     )
 
 
@@ -66,7 +68,7 @@ def create_app(service: RagService | None = None, settings: Settings | None = No
     @app.post("/ask")
     def ask(body: AskIn, rag: RagService = Depends(get_service)) -> AskOut:
         try:
-            answer = rag.ask(body.question, body.top_k)
+            answer = rag.ask(body.question, body.top_k, body.mode)
         except LLMError as exc:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
         return AskOut(**asdict(answer))

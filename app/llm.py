@@ -1,5 +1,6 @@
 """The language model that writes answers. Swap providers with RAG_LLM_PROVIDER."""
 
+from dataclasses import dataclass
 from typing import Protocol
 
 import httpx
@@ -12,20 +13,29 @@ class LLMError(RuntimeError):
     """The model could not be reached or returned an error."""
 
 
+@dataclass(frozen=True)
+class Generation:
+    text: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
 class LLM(Protocol):
-    def generate(self, system: str, prompt: str) -> str: ...
+    model: str
+
+    def generate(self, system: str, prompt: str) -> Generation: ...
 
 
 class OllamaLLM:
     def __init__(self, host: str, model: str) -> None:
+        self.model = model
         self._host = host
-        self._model = model
         self._client = ollama.Client(host=host)
 
-    def generate(self, system: str, prompt: str) -> str:
+    def generate(self, system: str, prompt: str) -> Generation:
         try:
             response = self._client.chat(
-                model=self._model,
+                model=self.model,
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": prompt},
@@ -35,11 +45,15 @@ class OllamaLLM:
             )
         except ollama.ResponseError as exc:
             raise LLMError(
-                f"Ollama error: {exc.error}. Did you run 'ollama pull {self._model}'?"
+                f"Ollama error: {exc.error}. Did you run 'ollama pull {self.model}'?"
             ) from exc
         except (ConnectionError, httpx.HTTPError) as exc:
             raise LLMError(f"Cannot reach Ollama at {self._host}. Is Ollama running?") from exc
-        return response.message.content or ""
+        return Generation(
+            text=response.message.content or "",
+            input_tokens=response.prompt_eval_count or 0,
+            output_tokens=response.eval_count or 0,
+        )
 
 
 def create_llm(settings: Settings) -> LLM:
