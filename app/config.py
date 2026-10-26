@@ -31,10 +31,17 @@ class Settings(BaseSettings):
     # How many results each search method contributes before fusion and reranking.
     candidates: int = 20
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    # Chunks less similar than this (cosine, 0-1) are ignored, so off-topic
-    # questions get "I don't know" instead of a guess.
-    min_score: float = 0.25
+    # If even the closest chunk is less similar than this (cosine, 0-1), the question
+    # is off-topic and gets "I don't know" without calling the model. Chosen from the
+    # evaluation set: off-topic questions score 0.07-0.15, the weakest answerable one
+    # 0.24. Near-miss questions score higher and are left to the model to refuse.
+    min_score: float = 0.2
     max_upload_mb: int = 20
+
+    # Used only to report cost in the evaluation. 0 for local models; set these
+    # to a hosted model's price per million tokens to compare.
+    price_input_per_mtok: float = 0.0
+    price_output_per_mtok: float = 0.0
 
 
 @lru_cache
