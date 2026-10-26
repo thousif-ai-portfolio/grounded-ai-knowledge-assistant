@@ -199,7 +199,10 @@ def main() -> int:
     parser.add_argument("target", choices=["retrieval", "answers"])
     parser.add_argument("--mode", choices=[m.value for m in SearchMode], default=None)
     parser.add_argument(
-        "--min-recall", type=float, default=None, help="exit 1 if best Recall@5 is lower"
+        "--min-recall",
+        type=float,
+        default=None,
+        help="quality gate: exit 1 if Recall@5 of the default search mode is lower",
     )
     args = parser.parse_args()
 
@@ -217,9 +220,10 @@ def main() -> int:
             path = save("retrieval", report)
             print_retrieval(report)
             print(f"\nsaved {path}")
-            best = max(m["recall_at_5"] for m in report["modes"].values())
-            if args.min_recall is not None and best < args.min_recall:
-                print(f"FAIL: best Recall@5 {best:.1%} is below {args.min_recall:.1%}")
+            default_mode = SearchMode(settings.search_mode).value
+            recall = report["modes"][default_mode]["recall_at_5"]
+            if args.min_recall is not None and recall < args.min_recall:
+                print(f"FAIL: {default_mode} Recall@5 {recall:.1%} is below {args.min_recall:.1%}")
                 return 1
             return 0
 

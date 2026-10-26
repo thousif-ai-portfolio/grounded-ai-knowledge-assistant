@@ -1,0 +1,41 @@
+# Runs the whole app: the API + website, and Ollama for answers.
+#
+#   docker compose up --build
+#
+# Then open http://localhost:8000. The first start downloads the answer model
+# (about 2 GB), so answers work a few minutes after the containers start.
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama-models:/root/.ollama
+
+  # One-off job that downloads the answer model into the shared volume, then exits.
+  ollama-pull:
+    image: ollama/ollama:latest
+    depends_on: [ollama]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "sleep 5 && ollama pull ${RAG_LLM_MODEL:-llama3.2:3b}"]
+    restart: on-failure
+
+  app:
+    build: .
+    depends_on: [ollama]
+    ports:
+      - "8000:8000"
+    environment:
+      RAG_OLLAMA_HOST: http://ollama:11434
+      RAG_LLM_MODEL: ${RAG_LLM_MODEL:-llama3.2:3b}
+      # Change this! Anyone who knows it can forge login tokens.
+      RAG_JWT_SECRET: ${RAG_JWT_SECRET:-change-me-to-a-long-random-string}
+    volumes:
+      # Keeps accounts, chat history and uploaded documents across restarts. On first
+      # start Docker copies in the sample documents already indexed in the image.
+      - app-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  app-data:
