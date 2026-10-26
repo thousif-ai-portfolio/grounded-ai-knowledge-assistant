@@ -1,104 +1,163 @@
 # Grounded AI Knowledge Assistant
 
 Ask questions about your PDFs and documents and get answers **with citations**
-(file and page). If the documents don't contain the answer, it says
+(file and page). When the documents don't contain the answer, it says
 **"I don't know"** instead of guessing.
 
-Everything runs locally and costs nothing: no API keys, no cloud.
+It runs entirely on your own machine for free: local models, no API keys.
 
-> **Status: Week 1 of 5.** Core RAG pipeline + API + tests. Hybrid search,
-> reranking, evaluation, UI and deployment are coming next (see [Roadmap](#roadmap)).
+![CI](https://github.com/thousif-ai-portfolio/grounded-ai-knowledge-assistant/actions/workflows/ci.yml/badge.svg)
 
-## How it works
+## Features
 
+- **Cited answers.** Every claim points to a source, and you can expand the
+  citation to read the exact passage and page.
+- **Hybrid search.** Vector search (meaning) and BM25 (exact words) are merged with
+  Reciprocal Rank Fusion, then a cross-encoder reranks the results.
+- **Refuses instead of guessing.** Off-topic questions are rejected before the model
+  is called, and the model is told to answer "I don't know" when the sources are silent.
+- **Measured, not claimed.** A 70-question benchmark compares search strategies,
+  and CI fails if search quality drops.
+- **Full-stack app.** FastAPI backend, React frontend, user accounts with JWT, private
+  chat history, and an evaluation dashboard.
+
+## Results
+
+Measured with `python -m evaluation.run retrieval` on 70 questions over 7 documents
+(58 answerable, 12 whose answer is not in the documents). Each question is labelled
+with an evidence phrase that must appear in the retrieved chunk.
+
+| Search mode | Recall@1 | Recall@5 | MRR@5 | Latency p50 |
+|---|---:|---:|---:|---:|
+| Semantic (vectors only) | 81.0% | 100% | 0.890 | 33 ms |
+| Hybrid (vectors + BM25, RRF) | 82.8% | 100% | 0.908 | 30 ms |
+| **Hybrid + rerank** (default) | **94.8%** | 100% | **0.974** | 1,976 ms |
+
+**What this shows**
+
+- Every mode finds the right passage somewhere in the top 5. The difference is
+  **ranking**: reranking puts the right passage *first* 94.8% of the time instead of
+  81%. That matters because a small model mostly answers from the first sources.
+- Reranking costs about **2 seconds per question on a laptop CPU**. That's worth it
+  here, because generating the answer takes longer anyway; for a latency-critical
+  service, hybrid without reranking is the cheaper option.
+- 5 of the 12 unanswerable questions (the clearly off-topic ones, like "What is the
+  capital of France?") are rejected before the model is called. The other 7 are
+  near-misses, like *"What does Atlas error E4040 mean?"* when only other codes exist.
+  They look relevant to search, so refusing them is the model's job.
+
+**Answer quality** (correctness, faithfulness, citation accuracy, refusal accuracy,
+latency, tokens) is measured by `python -m evaluation.run answers`, using the model
+as a judge. It needs Ollama running and **hasn't been run for this README yet**. The
+dashboard shows those numbers once it has.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Indexing
+        F[PDF / MD / TXT] --> P[PyMuPDF<br/>text + page numbers]
+        P --> C[Chunks<br/>800 chars, 150 overlap]
+        C --> E[Embeddings<br/>all-MiniLM-L6-v2]
+        E --> V[(ChromaDB)]
+    end
+    subgraph Answering
+        Q[Question] --> S1[Vector search]
+        Q --> S2[BM25 search]
+        S1 --> G{Closest chunk<br/>similar enough?}
+        G -- no --> IDK[I don't know]
+        G -- yes --> RRF[Reciprocal Rank Fusion]
+        S2 --> RRF
+        RRF --> R[Cross-encoder rerank]
+        R --> L[Ollama llama3.2<br/>answers from numbered sources]
+        L --> A[Answer + citations]
+    end
+    V -.-> S1
 ```
-Indexing:   PDF / .md / .txt ─► PyMuPDF (text + page numbers) ─► chunks (800 chars, 150 overlap)
-                              ─► Sentence Transformers (all-MiniLM-L6-v2) ─► ChromaDB
 
-Asking:     question ─► embed ─► ChromaDB top-5 ─► drop chunks below min_score
-                     ─► Ollama (llama3.2:3b) answers from numbered sources only
-                     ─► citations parsed from [1], [2] markers
-```
-
-Design decisions:
-
-- **No LangChain / LlamaIndex.** Every step is plain Python, so each one can be
-  explained, tested and swapped.
-- **Chunks never cross pages**, so every citation points to a real page.
-- **Two "I don't know" guards:** if no chunk passes `min_score`, the model is never
-  called; if the model itself says it doesn't know, no citations are returned.
-- **The model is one setting.** `RAG_LLM_PROVIDER` / `RAG_LLM_MODEL` switch it
-  without touching the pipeline (see [app/llm.py](app/llm.py)).
-- **Duplicate uploads are ignored.** A document's ID is a hash of its bytes.
-- **`temperature: 0`**, so the same question gives the same answer, which keeps
-  evaluation results repeatable.
-
-## Tech stack
-
-| Part | Tool |
+| Layer | Technology |
 |---|---|
-| API | FastAPI |
-| PDF text | PyMuPDF |
-| Embeddings | Sentence Transformers `all-MiniLM-L6-v2` |
-| Vector database | ChromaDB (saved to `data/index/`) |
-| Answer model | Ollama + `llama3.2:3b` |
-| Tests / lint | pytest, Ruff |
+| Backend | Python 3.12, FastAPI, Pydantic |
+| Documents | PyMuPDF |
+| Embeddings / reranking | Sentence Transformers (`all-MiniLM-L6-v2`, `ms-marco-MiniLM-L-6-v2`) |
+| Search | ChromaDB (vectors), rank-bm25 (keywords) |
+| Answers | Ollama + `llama3.2:3b` (any Ollama model via one setting) |
+| Accounts | SQLite + SQLAlchemy, Argon2 password hashing, JWT |
+| Frontend | React, Vite, TypeScript, Tailwind CSS, Recharts |
+| Quality | pytest, Vitest + Testing Library, Ruff, oxlint, GitHub Actions |
+| Deployment | Docker, docker compose, Hugging Face Spaces |
 
-## Setup (Windows, PowerShell)
+## Design decisions and trade-offs
 
-1. Install **Python 3.11+** and **Ollama** (https://ollama.com).
-2. Download the answer model (about 2 GB, one time):
+- **No LangChain or LlamaIndex.** Chunking, retrieval, fusion and prompting are each
+  a few dozen lines of plain Python, so every step can be explained, tested and
+  measured on its own.
+- **Chunks never cross page boundaries**, so every citation points to a real page.
+- **Evaluation labels are evidence phrases, not chunk IDs.** Changing the chunk size
+  doesn't invalidate the dataset, and a test checks that every phrase really exists
+  in its source document.
+- **The "I don't know" cutoff (`min_score = 0.2`) was chosen from data.** Off-topic
+  questions score 0.07–0.15 and the weakest answerable question scores 0.24, but one
+  unanswerable near-miss scores 0.25. No single cutoff separates them, so the cutoff
+  only catches the clearly off-topic questions and the model handles the rest.
+- **Reciprocal Rank Fusion instead of mixing scores.** Cosine similarity and BM25
+  scores are on different scales; RRF only uses ranks, so it needs no tuning.
+- **Shared knowledge base, private history.** Any signed-in user can add documents;
+  chat history is per user. Per-user document collections would be the next step for
+  a multi-tenant product.
+- **`temperature: 0`** makes answers repeatable, so benchmark runs are comparable.
 
-   ```bash
-   ollama pull llama3.2:3b
-   ```
+## Run it locally
 
-3. Create the virtual environment and install packages:
-
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate
-   pip install -r requirements-dev.txt
-   ```
-
-The embedding model (about 90 MB) downloads automatically the first time you run the app.
-
-## Run it
-
-**From the terminal:**
+You need Python 3.11+, Node 22+ and [Ollama](https://ollama.com).
 
 ```bash
-python -m app.cli ingest data/sample_docs
-python -m app.cli ask "What is chunk overlap used for?"
+ollama pull llama3.2:3b
 ```
 
-**As an API:**
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements-dev.txt
+python -m app.cli ingest data/sample_docs
+```
 
 ```bash
+cd frontend
+npm install
+npm run build
+cd ..
 uvicorn app.main:app --reload
 ```
 
-Then open http://localhost:8000/docs to try every endpoint in the browser.
+Open http://localhost:8000, create an account and ask a question. The API docs are at
+http://localhost:8000/docs.
 
-| Method | Path | What it does |
-|---|---|---|
-| `POST` | `/documents` | Upload a `.pdf`, `.md` or `.txt` file |
-| `GET` | `/documents` | List indexed documents |
-| `DELETE` | `/documents/{doc_id}` | Remove a document |
-| `POST` | `/ask` | `{"question": "...", "top_k": 5}` returns an answer with citations |
-| `GET` | `/health` | Health check |
+On a laptop with 8 GB of RAM, `llama3.2:1b` is noticeably faster. Set
+`RAG_LLM_MODEL=llama3.2:1b` in a `.env` file (see `.env.example` for every setting).
 
-Example `/ask` response:
+**Frontend development** with hot reload: run `npm run dev` in `frontend/` while the
+API runs on port 8000.
 
-```json
-{
-  "answer": "Chunk overlap repeats text between neighbouring chunks so a sentence cut at a boundary still appears complete [1].",
-  "citations": [
-    {"number": 1, "filename": "rag-basics.md", "page": 1, "text": "...", "score": 0.71}
-  ],
-  "grounded": true
-}
+### With Docker
+
+```bash
+docker compose up --build
 ```
+
+This starts the app and an Ollama container, and downloads the answer model on first
+start. Set `RAG_JWT_SECRET` to a long random value before exposing it anywhere.
+
+## Run the benchmark
+
+```bash
+python -m evaluation.run retrieval
+python -m evaluation.run answers
+```
+
+The first command needs no LLM. The second needs Ollama running and takes a few
+minutes. Results are saved to `evaluation/results/` and shown on the dashboard.
+Questions live in `evaluation/questions.jsonl`.
 
 ## Tests
 
@@ -107,25 +166,56 @@ pytest
 ruff check .
 ```
 
-Tests use a fake embedder and a fake model, so they run in seconds, offline,
-without Ollama or any model downloads.
+```bash
+cd frontend
+npm test
+npm run lint
+```
 
-## Settings
+There are 120 backend tests and 12 frontend tests. They use a fake embedder and
+model, so they run offline in seconds. CI also runs the retrieval benchmark with the
+real models and **fails the build if Recall@5 drops below 90%**.
 
-Copy `.env.example` to `.env` and change any value, e.g. `RAG_LLM_MODEL=qwen2.5:3b`.
+## API
 
-## Roadmap
+| Method | Path | Auth | What it does |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | | Create an account |
+| `POST` | `/api/auth/login` | | Get a JWT (form fields `username`, `password`) |
+| `GET` | `/api/auth/me` | ✔ | Current user |
+| `POST` | `/api/documents` | ✔ | Upload a PDF, Markdown or text file |
+| `GET` | `/api/documents` | ✔ | List documents |
+| `DELETE` | `/api/documents/{doc_id}` | ✔ | Remove a document |
+| `POST` | `/api/ask` | ✔ | `{"question": "...", "mode": "hybrid_rerank"}` returns an answer with citations |
+| `GET` / `DELETE` | `/api/history` | ✔ | Your chat history |
+| `GET` | `/api/evaluation` | | Benchmark results for the dashboard |
 
-| Week | Adds |
-|---|---|
-| 1 ✅ | PDF ingestion, semantic search, cited answers, "I don't know", API, tests |
-| 2 | BM25 keyword search, hybrid search (Reciprocal Rank Fusion), cross-encoder reranking |
-| 3 | 50–100 question evaluation set; Recall@5, MRR, faithfulness, latency; compare search modes |
-| 4 | React + Vite + TypeScript chat UI, evaluation dashboard, SQLite + JWT login |
-| 5 | Docker, GitHub Actions, deployment to Hugging Face Spaces, demo video |
+## Deploy
 
-## Limitations (current)
+See [deploy/huggingface/README.md](deploy/huggingface/README.md) to host a free demo
+on a Hugging Face Space.
 
-- Scanned PDFs (images only) aren't supported yet; they need OCR.
-- A 3B local model is fast and free but less accurate than large hosted models.
-- Semantic search only, so exact terms like error codes can be missed (fixed by BM25 in week 2).
+## Project structure
+
+```
+app/            FastAPI app: ingestion, retrieval, RAG, auth, database
+evaluation/     70-question benchmark, metrics, LLM judge, saved results
+frontend/       React + Vite + TypeScript app
+tests/          Backend tests
+data/sample_docs/  Sample documents (the Atlas Sync manual is fictional)
+scripts/        Generates the sample PDF
+deploy/         Hugging Face Space setup
+```
+
+## Limitations
+
+- **The benchmark corpus is small** (7 documents, about 20 chunks), so Recall@5
+  saturates at 100%. A larger corpus, for example public research papers, would show
+  bigger differences between modes.
+- **The `min_score` cutoff was tuned on the same questions it's evaluated on**, so
+  the rejection rate is optimistic.
+- **The answer judge is the same small model** that writes the answers; a stronger
+  judge would give more reliable faithfulness scores.
+- **Scanned PDFs aren't supported** (they need OCR).
+- **Not run yet:** the answer benchmark, the Docker image and the Hugging Face
+  deployment. The Docker image is built by CI on every push.
