@@ -1,6 +1,25 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.retrieval import SearchMode
+
+
+class RegisterIn(BaseModel):
+    username: str = Field(min_length=3, max_length=32, pattern=r"^[A-Za-z0-9_]+$")
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
 
 
 class DocumentOut(BaseModel):
@@ -40,3 +59,22 @@ class AskOut(BaseModel):
     generation_ms: float
     input_tokens: int
     output_tokens: int
+
+
+class HistoryItemOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    question: str
+    answer: str
+    citations: list[CitationOut]
+    grounded: bool
+    mode: SearchMode
+    created_at: datetime
+
+
+class EvaluationOut(BaseModel):
+    """Raw JSON reports written by `python -m evaluation.run`; null if not run yet."""
+
+    retrieval: dict | None
+    answers: dict | None

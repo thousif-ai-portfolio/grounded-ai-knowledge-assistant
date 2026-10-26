@@ -5,9 +5,11 @@ import math
 import re
 
 import pytest
+from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.llm import Generation
+from app.main import create_app
 from app.rag import RagService
 from app.vector_store import ChromaStore
 
@@ -58,7 +60,16 @@ class FakeReranker:
 
 @pytest.fixture
 def settings(tmp_path) -> Settings:
-    return Settings(data_dir=tmp_path / "index", chunk_size=200, chunk_overlap=40, min_score=0.1)
+    return Settings(
+        data_dir=tmp_path / "index",
+        database_url=f"sqlite:///{(tmp_path / 'app.db').as_posix()}",
+        eval_results_dir=tmp_path / "results",
+        frontend_dist=tmp_path / "dist",
+        jwt_secret="test-secret-that-is-at-least-32-bytes-long",
+        chunk_size=200,
+        chunk_overlap=40,
+        min_score=0.1,
+    )
 
 
 @pytest.fixture
@@ -77,3 +88,9 @@ def rag(settings, llm, reranker) -> RagService:
     return RagService(
         embedder=FakeEmbedder(), store=store, llm=llm, settings=settings, reranker=reranker
     )
+
+
+@pytest.fixture
+def client(rag, settings) -> TestClient:
+    with TestClient(create_app(service=rag, settings=settings)) as client:
+        yield client

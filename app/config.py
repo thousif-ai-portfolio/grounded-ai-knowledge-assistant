@@ -38,6 +38,16 @@ class Settings(BaseSettings):
     min_score: float = 0.2
     max_upload_mb: int = 20
 
+    database_url: str = f"sqlite:///{(PROJECT_ROOT / 'data' / 'app.db').as_posix()}"
+    # Set RAG_JWT_SECRET in production. If empty, a random secret is generated at
+    # startup, so everyone has to log in again after a restart.
+    jwt_secret: str = ""
+    jwt_expire_minutes: int = 12 * 60
+
+    eval_results_dir: Path = PROJECT_ROOT / "evaluation" / "results"
+    # The built React app. Served at / when it exists (after `npm run build`).
+    frontend_dist: Path = PROJECT_ROOT / "frontend" / "dist"
+
     # Used only to report cost in the evaluation. 0 for local models; set these
     # to a hosted model's price per million tokens to compare.
     price_input_per_mtok: float = 0.0
