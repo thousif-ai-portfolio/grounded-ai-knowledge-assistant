@@ -46,10 +46,27 @@ with an evidence phrase that must appear in the retrieved chunk.
   near-misses, like *"What does Atlas error E4040 mean?"* when only other codes exist.
   They look relevant to search, so refusing them is the model's job.
 
-**Answer quality** (correctness, faithfulness, citation accuracy, refusal accuracy,
-latency, tokens) is measured by `python -m evaluation.run answers`, using the model
-as a judge. It needs Ollama running and **hasn't been run for this README yet**. The
-dashboard shows those numbers once it has.
+**Answer quality** is measured with `python -m evaluation.run answers` on the same
+70 questions, using hybrid + rerank and `llama3.2:3b` both to answer and to judge
+(laptop CPU, no GPU).
+
+| Metric | Result |
+|---|---:|
+| Correctness (answerable questions) | 96.6% (56 / 58) |
+| Faithfulness to the sources | 89.7% (52 / 58) |
+| Citation accuracy | 98.3% (57 / 58) |
+| Refusal accuracy (unanswerable questions) | 100% (12 / 12) |
+| Latency p50 / p95 | 28.8 s / 40.2 s |
+| Tokens per question (in / out) | 790 / 23 |
+| Cost per question | $0 (runs locally) |
+
+- **Every unanswerable question got "I don't know"**, including the 7 near-misses
+  that got past the search cutoff, so the prompt handles what the cutoff can't.
+- **Faithfulness is the weakest score:** the judge marked 6 answers as not fully
+  supported by the sources. Small models tend to add details, and the judge is
+  the same small model, so treat this number as approximate.
+- **Latency is almost all generation** on a laptop CPU; search and reranking take
+  about 2 seconds of it.
 
 ## Architecture
 
@@ -217,5 +234,5 @@ deploy/         Hugging Face Space setup
 - **The answer judge is the same small model** that writes the answers; a stronger
   judge would give more reliable faithfulness scores.
 - **Scanned PDFs aren't supported** (they need OCR).
-- **Not run yet:** the answer benchmark, the Docker image and the Hugging Face
-  deployment. The Docker image is built by CI on every push.
+- **Not run yet:** the Docker image and the Hugging Face deployment. The Docker
+  image is built by CI on every push.
