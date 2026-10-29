@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-26T07:40:40+00:00",
+  "generated_at": "2026-10-29T14:59:20+00:00",
   "config": {
     "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
     "rerank_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
@@ -8,24 +8,30 @@
     "chunk_overlap": 150,
     "top_k": 5,
     "candidates": 20,
-    "min_score": 0.2
+    "min_score": 0.2,
+    "keyword_min_score": 0.1
   },
-  "questions": 70,
-  "answerable": 58,
+  "questions": 80,
+  "answerable": 68,
   "unanswerable": 12,
   "modes": {
     "semantic": {
-      "recall_at_1": 0.8103448275862069,
-      "recall_at_5": 1.0,
-      "mrr_at_5": 0.8899425287356322,
+      "recall_at_1": 0.7794117647058824,
+      "recall_at_5": 0.9558823529411765,
+      "mrr_at_5": 0.854656862745098,
       "unanswerable_rejected": 0.4166666666666667,
-      "latency_p50_ms": 32.5,
-      "latency_p95_ms": 48.4,
+      "latency_p50_ms": 30.2,
+      "latency_p95_ms": 46.8,
       "by_type": {
         "keyword": {
           "questions": 25,
           "recall_at_5": 1.0,
           "mrr_at_5": 0.8713333333333334
+        },
+        "misspelled": {
+          "questions": 10,
+          "recall_at_5": 0.7,
+          "mrr_at_5": 0.65
         },
         "natural": {
           "questions": 33,
@@ -33,49 +39,67 @@
           "mrr_at_5": 0.904040404040404
         }
       },
-      "missed": []
+      "missed": [
+        "typo-01",
+        "typo-02",
+        "typo-10"
+      ]
     },
     "hybrid": {
-      "recall_at_1": 0.8275862068965517,
-      "recall_at_5": 1.0,
-      "mrr_at_5": 0.9080459770114943,
+      "recall_at_1": 0.8088235294117647,
+      "recall_at_5": 0.9852941176470589,
+      "mrr_at_5": 0.8909313725490197,
       "unanswerable_rejected": 0.4166666666666667,
-      "latency_p50_ms": 30.0,
-      "latency_p95_ms": 40.6,
+      "latency_p50_ms": 29.9,
+      "latency_p95_ms": 41.0,
       "by_type": {
         "keyword": {
           "questions": 25,
           "recall_at_5": 1.0,
           "mrr_at_5": 0.8933333333333333
         },
+        "misspelled": {
+          "questions": 10,
+          "recall_at_5": 0.9,
+          "mrr_at_5": 0.775
+        },
         "natural": {
           "questions": 33,
           "recall_at_5": 1.0,
-          "mrr_at_5": 0.9191919191919191
+          "mrr_at_5": 0.9242424242424242
         }
       },
-      "missed": []
+      "missed": [
+        "typo-10"
+      ]
     },
     "hybrid_rerank": {
-      "recall_at_1": 0.9482758620689655,
-      "recall_at_5": 1.0,
-      "mrr_at_5": 0.9741379310344828,
+      "recall_at_1": 0.9558823529411765,
+      "recall_at_5": 0.9852941176470589,
+      "mrr_at_5": 0.9705882352941176,
       "unanswerable_rejected": 0.4166666666666667,
-      "latency_p50_ms": 1976.3,
-      "latency_p95_ms": 3184.3,
+      "latency_p50_ms": 1706.2,
+      "latency_p95_ms": 2516.8,
       "by_type": {
         "keyword": {
           "questions": 25,
           "recall_at_5": 1.0,
           "mrr_at_5": 0.98
         },
+        "misspelled": {
+          "questions": 10,
+          "recall_at_5": 0.9,
+          "mrr_at_5": 0.9
+        },
         "natural": {
           "questions": 33,
           "recall_at_5": 1.0,
-          "mrr_at_5": 0.9696969696969697
+          "mrr_at_5": 0.9848484848484849
         }
       },
-      "missed": []
+      "missed": [
+        "typo-10"
+      ]
     }
   },
   "per_question": {
@@ -394,8 +418,8 @@
     "atl-09": {
       "type": "natural",
       "semantic": 1,
-      "hybrid": 3,
-      "hybrid_rerank": 2
+      "hybrid": 2,
+      "hybrid_rerank": 1
     },
     "atl-10": {
       "type": "keyword",
@@ -498,6 +522,66 @@
       "semantic": "retrieved",
       "hybrid": "retrieved",
       "hybrid_rerank": "retrieved"
+    },
+    "typo-01": {
+      "type": "misspelled",
+      "semantic": null,
+      "hybrid": 4,
+      "hybrid_rerank": 1
+    },
+    "typo-02": {
+      "type": "misspelled",
+      "semantic": null,
+      "hybrid": 1,
+      "hybrid_rerank": 1
+    },
+    "typo-03": {
+      "type": "misspelled",
+      "semantic": 2,
+      "hybrid": 1,
+      "hybrid_rerank": 1
+    },
+    "typo-04": {
+      "type": "misspelled",
+      "semantic": 1,
+      "hybrid": 2,
+      "hybrid_rerank": 1
+    },
+    "typo-05": {
+      "type": "misspelled",
+      "semantic": 1,
+      "hybrid": 1,
+      "hybrid_rerank": 1
+    },
+    "typo-06": {
+      "type": "misspelled",
+      "semantic": 1,
+      "hybrid": 1,
+      "hybrid_rerank": 1
+    },
+    "typo-07": {
+      "type": "misspelled",
+      "semantic": 1,
+      "hybrid": 1,
+      "hybrid_rerank": 1
+    },
+    "typo-08": {
+      "type": "misspelled",
+      "semantic": 1,
+      "hybrid": 1,
+      "hybrid_rerank": 1
+    },
+    "typo-09": {
+      "type": "misspelled",
+      "semantic": 1,
+      "hybrid": 1,
+      "hybrid_rerank": 1
+    },
+    "typo-10": {
+      "type": "misspelled",
+      "semantic": null,
+      "hybrid": null,
+      "hybrid_rerank": null
     }
   }
 }

@@ -11,7 +11,6 @@ uploaded documents are never touched.
 
 import argparse
 import json
-import re
 import sys
 import tempfile
 import time
@@ -19,12 +18,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.config import PROJECT_ROOT, Settings, get_settings
-from app.embeddings import SentenceTransformerEmbedder
 from app.ingest import SUPPORTED_EXTENSIONS
-from app.llm import LLMError, create_llm
-from app.rag import IDK, RagService
-from app.retrieval import CrossEncoderReranker, SearchMode
-from app.vector_store import ChromaStore
+from app.llm import LLMError
+from app.main import build_service
+from app.rag import IDK, RagService, cited_numbers
+from app.retrieval import SearchMode
 from evaluation.dataset import EvalItem, first_relevant_rank, is_relevant, load_questions
 from evaluation.judge import judge_answer
 from evaluation.metrics import mrr_at, percentile, rate, recall_at
@@ -32,17 +30,22 @@ from evaluation.metrics import mrr_at, percentile, rate, recall_at
 DOCS_DIR = PROJECT_ROOT / "data" / "sample_docs"
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 K = 5
+# What is saved for each answer before grading; `regrade` reuses these.
+ANSWER_FIELDS = (
+    "id",
+    "type",
+    "question",
+    "answer",
+    "refused",
+    "latency_ms",
+    "input_tokens",
+    "output_tokens",
+)
 
 
 def build_eval_service(index_dir: Path) -> tuple[RagService, Settings]:
     settings = get_settings().model_copy(update={"data_dir": index_dir, "top_k": K})
-    rag = RagService(
-        embedder=SentenceTransformerEmbedder(settings.embedding_model),
-        store=ChromaStore(index_dir, "eval"),
-        llm=create_llm(settings),
-        settings=settings,
-        reranker=CrossEncoderReranker(settings.rerank_model),
-    )
+    rag = build_service(settings)
     for path in sorted(DOCS_DIR.iterdir()):
         if path.suffix.lower() in SUPPORTED_EXTENSIONS:
             rag.add_document(path.name, path.read_bytes())
@@ -59,6 +62,7 @@ def config_summary(settings: Settings) -> dict:
         "top_k",
         "candidates",
         "min_score",
+        "keyword_min_score",
     ]
     return {key: getattr(settings, key) for key in keys}
 
@@ -101,7 +105,7 @@ def evaluate_retrieval(rag: RagService, items: list[EvalItem]) -> dict:
             "latency_p50_ms": round(percentile(latencies, 50), 1),
             "latency_p95_ms": round(percentile(latencies, 95), 1),
             "by_type": by_type,
-            "missed": [item_id for item_id, rank in ranks.items() if rank is None or rank > K],
+            "missed": [item_id for item_id, rank in ranks.items() if rank is None],
         }
 
     return {
@@ -143,7 +147,7 @@ def grade(rag: RagService, item: EvalItem, answer: str, mode: SearchMode) -> dic
     """Citation check and judge verdict for one answer to an answerable question."""
     # Retrieval is deterministic, so these are the same numbered sources the answer saw.
     hits = rag.retrieve(item.question, top_k=K, mode=mode)
-    cited = {int(n) for n in re.findall(r"\[(\d+)\]", answer)}
+    cited = cited_numbers(answer)
     citation_hit = any(
         is_relevant(item, hit.filename, hit.text) for n, hit in enumerate(hits, 1) if n in cited
     )
@@ -174,18 +178,6 @@ def regrade_answers(
             row |= grade(rag, item, row["answer"], mode)
         rows.append(row)
     return summarize(rows, settings, mode)
-
-
-ANSWER_FIELDS = (
-    "id",
-    "type",
-    "question",
-    "answer",
-    "refused",
-    "latency_ms",
-    "input_tokens",
-    "output_tokens",
-)
 
 
 def summarize(rows: list[dict], settings: Settings, mode: SearchMode) -> dict:

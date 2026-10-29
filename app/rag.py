@@ -3,12 +3,13 @@
 import hashlib
 import re
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, replace
 
 from app.config import Settings
 from app.embeddings import Embedder
 from app.ingest import chunk_pages, extract_pages
-from app.llm import LLM
+from app.llm import LLM, Generation
 from app.retrieval import Bm25Index, Reranker, SearchMode, reciprocal_rank_fusion
 from app.vector_store import ChromaStore, DocumentInfo, SearchHit
 
@@ -20,6 +21,8 @@ Rules:
 - Use only facts stated in the sources. Never use outside knowledge.
 - Questions may be informal, misspelled or just a keyword such as an error code or a
   setting name. Work out what the user wants to know and answer it if the sources cover it.
+- Answer only what was asked. Sources often list several error codes or settings side by
+  side; use only the lines about the one in the question.
 - End every sentence with the numbers of the sources it came from, like [1] or [2][3].
   Never leave out the citation.
 - If the sources do not contain the answer, reply with exactly: I don't know."""
@@ -69,6 +72,12 @@ def build_prompt(question: str, hits: list[SearchHit]) -> str:
 def is_idk(text: str) -> bool:
     normalized = text.strip().lower().replace("’", "'")
     return normalized.startswith(("i don't know", "i do not know"))
+
+
+def cited_numbers(text: str) -> set[int]:
+    """Source numbers cited as [1], [2][3] or, as small models sometimes write, [1, 4]."""
+    groups = re.findall(r"\[(\d+(?:\s*,\s*\d+)*)\]", text)
+    return {int(n) for group in groups for n in group.split(",")}
 
 
 def _ms_since(start: float) -> float:
@@ -135,10 +144,15 @@ class RagService:
         semantic = self._store.search(query_vector, candidates)
         # Relevance gate, shared by every mode: if even the closest chunk is far
         # from the question, the documents don't cover it and we answer "I don't know".
-        if not semantic or semantic[0].score < self._settings.min_score:
+        # A borderline score is let through when a rare keyword matches (misspellings).
+        floor = self._settings.min_score
+        top = semantic[0].score if semantic else 0.0
+        if top < floor and self._keyword_index().has_rare_term(question):
+            floor = self._settings.keyword_min_score
+        if top < floor:
             return []
         if mode is SearchMode.SEMANTIC:
-            return [hit for hit in semantic[:k] if hit.score >= self._settings.min_score]
+            return [hit for hit in semantic[:k] if hit.score >= floor]
 
         keyword = self._keyword_index().search(question, candidates)
         by_id = {hit.chunk_id: hit for hit in keyword} | {hit.chunk_id: hit for hit in semantic}
@@ -159,31 +173,46 @@ class RagService:
     def ask(
         self, question: str, top_k: int | None = None, mode: SearchMode | None = None
     ) -> Answer:
+        *_, answer = self.ask_stream(question, top_k, mode)
+        return answer
+
+    def ask_stream(
+        self, question: str, top_k: int | None = None, mode: SearchMode | None = None
+    ) -> Iterator[str | Answer]:
+        """Yields the answer text as the model writes it, then the final Answer, which adds
+        the citations and replaces the text with "I don't know." if the model refused."""
         mode = SearchMode(mode or self._settings.search_mode)
         start = time.perf_counter()
         hits = self.retrieve(question, top_k, mode)
         retrieval_ms = _ms_since(start)
         if not hits:
             # Nothing relevant was found, so don't let the model guess.
-            return Answer(IDK, [], grounded=False, mode=mode, retrieval_ms=retrieval_ms)
+            yield Answer(IDK, [], grounded=False, mode=mode, retrieval_ms=retrieval_ms)
+            return
 
         start = time.perf_counter()
-        generation = self._llm.generate(SYSTEM_PROMPT, build_prompt(question, hits))
+        parts: list[str] = []
+        last = Generation("")
+        for last in self._llm.stream(SYSTEM_PROMPT, build_prompt(question, hits)):
+            if last.text:
+                parts.append(last.text)
+                yield last.text
         timing = {
             "mode": mode,
             "retrieval_ms": retrieval_ms,
             "generation_ms": _ms_since(start),
-            "input_tokens": generation.input_tokens,
-            "output_tokens": generation.output_tokens,
+            "input_tokens": last.input_tokens,
+            "output_tokens": last.output_tokens,
         }
-        text = generation.text.strip()
+        text = "".join(parts).strip()
         if not text or is_idk(text):
-            return Answer(IDK, [], grounded=False, **timing)
+            yield Answer(IDK, [], grounded=False, **timing)
+            return
 
-        cited = {int(n) for n in re.findall(r"\[(\d+)\]", text)}
+        cited = cited_numbers(text)
         citations = [
             Citation(number=n, filename=hit.filename, page=hit.page, text=hit.text, score=hit.score)
             for n, hit in enumerate(hits, 1)
             if n in cited
         ]
-        return Answer(text, citations, grounded=bool(citations), **timing)
+        yield Answer(text, citations, grounded=bool(citations), **timing)

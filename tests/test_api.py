@@ -65,6 +65,13 @@ def test_unsupported_file_is_rejected(client, auth):
     assert "Unsupported" in response.json()["detail"]
 
 
+def test_broken_pdf_is_rejected(client, auth):
+    response = upload(client, auth, name="report.pdf", data=b"not really a pdf")
+
+    assert response.status_code == 400
+    assert "not a readable PDF" in response.json()["detail"]
+
+
 def test_too_large_file_is_rejected(client, auth, settings):
     settings.max_upload_mb = 0
 
@@ -83,6 +90,45 @@ def test_model_down_returns_503(client, auth, llm):
 
     assert response.status_code == 503
     assert "Ollama" in response.json()["detail"]
+
+
+def stream_events(client, auth, body=QUESTION) -> list[dict]:
+    response = client.post("/api/ask/stream", json=body, headers=auth)
+    assert response.status_code == 200
+    return [json.loads(line) for line in response.text.splitlines()]
+
+
+def test_ask_stream_sends_text_then_the_answer_and_saves_it(client, auth):
+    upload(client, auth)
+
+    events = stream_events(client, auth)
+
+    *deltas, final = events
+    assert len(deltas) > 1 and all(e["type"] == "delta" for e in deltas)
+    assert "".join(e["text"] for e in deltas) == "Chunk overlap repeats text [1]."
+    assert final["type"] == "answer"
+    assert final["grounded"] is True
+    assert final["citations"][0]["filename"] == "notes.md"
+    history = client.get("/api/history", headers=auth).json()
+    assert [item["answer"] for item in history] == [final["answer"]]
+
+
+def test_ask_stream_off_topic_question_sends_only_the_answer(client, auth):
+    upload(client, auth)
+
+    events = stream_events(client, auth, {"question": "zebra giraffe safari"})
+
+    assert [e["type"] for e in events] == ["answer"]
+    assert events[0]["answer"] == "I don't know."
+
+
+def test_ask_stream_reports_model_errors(client, auth, llm):
+    upload(client, auth)
+    llm.reply = LLMError("Cannot reach Ollama")
+
+    events = stream_events(client, auth)
+
+    assert events == [{"type": "error", "detail": "Cannot reach Ollama"}]
 
 
 def test_evaluation_results_are_served(client, settings):

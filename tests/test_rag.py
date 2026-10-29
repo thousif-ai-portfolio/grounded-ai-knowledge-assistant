@@ -1,6 +1,6 @@
 import pytest
 
-from app.rag import IDK, EmptyDocumentError, is_idk
+from app.rag import IDK, EmptyDocumentError, cited_numbers, is_idk
 
 DOC = b"""Chunk overlap repeats a few hundred characters between neighbouring chunks.
 BM25 is a keyword ranking function that rewards rare query words."""
@@ -87,3 +87,24 @@ def test_delete_document(rag):
 )
 def test_is_idk(text, expected):
     assert is_idk(text) is expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Fact [1]. Other [2][3].", {1, 2, 3}),
+        ("Error E1042: the cache is full. [1, 4]", {1, 4}),
+        ("No citation, just a list [a, b] and E1042.", set()),
+    ],
+)
+def test_cited_numbers(text, expected):
+    assert cited_numbers(text) == expected
+
+
+def test_comma_separated_citations_are_kept(rag, llm):
+    rag.add_document("notes.md", DOC)
+    llm.reply = "Overlap repeats text [1, 2]."
+
+    answer = rag.ask("What does chunk overlap repeat?")
+
+    assert answer.grounded and [c.number for c in answer.citations] == [1]

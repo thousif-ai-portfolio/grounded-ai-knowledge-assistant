@@ -28,8 +28,11 @@ class Chunk:
 def extract_pages(filename: str, data: bytes) -> list[Page]:
     suffix = Path(filename).suffix.lower()
     if suffix == ".pdf":
-        with pymupdf.open(stream=data, filetype="pdf") as doc:
-            return [Page(number=i + 1, text=page.get_text()) for i, page in enumerate(doc)]
+        try:
+            with pymupdf.open(stream=data, filetype="pdf") as doc:
+                return [Page(number=i + 1, text=page.get_text()) for i, page in enumerate(doc)]
+        except pymupdf.FileDataError as exc:
+            raise UnsupportedFileError(f"'{filename}' is not a readable PDF") from exc
     if suffix in {".txt", ".md"}:
         return [Page(number=1, text=data.decode("utf-8", errors="replace"))]
     supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))

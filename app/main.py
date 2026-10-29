@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete, select
@@ -23,7 +24,7 @@ from app.config import Settings, get_settings
 from app.db import ChatMessage, User, create_session_factory
 from app.embeddings import SentenceTransformerEmbedder
 from app.ingest import UnsupportedFileError
-from app.llm import LLMError, create_llm
+from app.llm import LLMError, OllamaLLM
 from app.rag import EmptyDocumentError, RagService
 from app.retrieval import CrossEncoderReranker
 from app.schemas import (
@@ -44,7 +45,12 @@ def build_service(settings: Settings) -> RagService:
     return RagService(
         embedder=SentenceTransformerEmbedder(settings.embedding_model),
         store=ChromaStore(settings.data_dir, settings.collection_name),
-        llm=create_llm(settings),
+        llm=OllamaLLM(
+            host=settings.ollama_host,
+            model=settings.llm_model,
+            keep_alive=settings.llm_keep_alive,
+            max_tokens=settings.max_answer_tokens,
+        ),
         settings=settings,
         reranker=CrossEncoderReranker(settings.rerank_model),
     )
@@ -153,17 +159,11 @@ def create_app(service: RagService | None = None, settings: Settings | None = No
 
     # --- Questions and history (private to each user) ---------------------------
 
-    @api.post("/ask")
-    def ask(body: AskIn, rag: Rag, user: CurrentUser, db: Db) -> AskOut:
-        try:
-            answer = rag.ask(body.question, body.top_k, body.mode)
-        except LLMError as exc:
-            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
-        result = AskOut(**asdict(answer))
+    def save_answer(db: Session, user_id: int, question: str, result: AskOut) -> None:
         db.add(
             ChatMessage(
-                user_id=user.id,
-                question=body.question,
+                user_id=user_id,
+                question=question,
                 answer=result.answer,
                 citations=[c.model_dump() for c in result.citations],
                 grounded=result.grounded,
@@ -171,7 +171,38 @@ def create_app(service: RagService | None = None, settings: Settings | None = No
             )
         )
         db.commit()
+
+    @api.post("/ask")
+    def ask(body: AskIn, rag: Rag, user: CurrentUser, db: Db) -> AskOut:
+        try:
+            answer = rag.ask(body.question, body.top_k, body.mode)
+        except LLMError as exc:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+        result = AskOut(**asdict(answer))
+        save_answer(db, user.id, body.question, result)
         return result
+
+    @api.post("/ask/stream")
+    def ask_stream(body: AskIn, rag: Rag, user: CurrentUser) -> StreamingResponse:
+        """Newline-delimited JSON: {"type": "delta", "text"} lines while the model writes,
+        then one {"type": "answer", ...AskOut} line, or {"type": "error", "detail"}."""
+        user_id = user.id
+
+        def events() -> Iterator[str]:
+            try:
+                for item in rag.ask_stream(body.question, body.top_k, body.mode):
+                    if isinstance(item, str):
+                        yield json.dumps({"type": "delta", "text": item}) + "\n"
+                        continue
+                    result = AskOut(**asdict(item))
+                    # The request's own session is closed once streaming starts.
+                    with session_factory() as db:
+                        save_answer(db, user_id, body.question, result)
+                    yield json.dumps({"type": "answer", **result.model_dump(mode="json")}) + "\n"
+            except LLMError as exc:
+                yield json.dumps({"type": "error", "detail": str(exc)}) + "\n"
+
+        return StreamingResponse(events(), media_type="application/x-ndjson")
 
     @api.get("/history")
     def history(user: CurrentUser, db: Db, limit: int = 50) -> list[HistoryItemOut]:

@@ -107,7 +107,6 @@ describe('EvaluationView', () => {
     latency_p50_ms: p50,
     latency_p95_ms: p50 * 2,
     by_type: {},
-    missed: [],
   })
   const results: EvaluationResults = {
     retrieval: {

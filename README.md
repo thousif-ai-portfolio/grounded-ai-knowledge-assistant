@@ -10,34 +10,38 @@ It runs entirely on your own machine for free: local models, no API keys.
 
 ## Features
 
-- **Cited answers.** Every claim points to a source, and you can expand the
-  citation to read the exact passage and page.
+- **Cited answers, streamed.** The answer appears as the model writes it. Every claim
+  points to a source, and you can expand the citation to read the exact passage and page.
 - **Hybrid search.** Vector search (meaning) and BM25 (exact words) are merged with
   Reciprocal Rank Fusion, then a cross-encoder reranks the results.
 - **Refuses instead of guessing.** Off-topic questions are rejected before the model
   is called, and the model is told to answer "I don't know" when the sources are silent.
-- **Measured, not claimed.** A 70-question benchmark compares search strategies,
-  and CI fails if search quality drops.
+- **Measured, not claimed.** An 80-question benchmark (including misspelled questions)
+  compares search strategies, and CI fails if search quality drops.
 - **Full-stack app.** FastAPI backend, React frontend, user accounts with JWT, private
   chat history, and an evaluation dashboard.
 
 ## Results
 
-Measured with `python -m evaluation.run retrieval` on 70 questions over 7 documents
-(58 answerable, 12 whose answer is not in the documents). Each question is labelled
-with an evidence phrase that must appear in the retrieved chunk.
+Measured with `python -m evaluation.run retrieval` on 80 questions over 7 documents:
+58 natural and keyword questions, 10 misspelled ones like *"wat does E1042 meen"*, and
+12 whose answer is not in the documents. Each question is labelled with an evidence
+phrase that must appear in the retrieved chunk.
 
-| Search mode | Recall@1 | Recall@5 | MRR@5 | Latency p50 |
-|---|---:|---:|---:|---:|
-| Semantic (vectors only) | 81.0% | 100% | 0.890 | 33 ms |
-| Hybrid (vectors + BM25, RRF) | 82.8% | 100% | 0.908 | 30 ms |
-| **Hybrid + rerank** (default) | **94.8%** | 100% | **0.974** | 1,976 ms |
+| Search mode | Recall@1 | Recall@5 | MRR@5 | Recall@5, misspelled | Latency p50 |
+|---|---:|---:|---:|---:|---:|
+| Semantic (vectors only) | 77.9% | 95.6% | 0.855 | 70% | 30 ms |
+| Hybrid (vectors + BM25, RRF) | 80.9% | 98.5% | 0.891 | 90% | 30 ms |
+| **Hybrid + rerank** (default) | **95.6%** | 98.5% | **0.971** | 90% | 1,706 ms |
 
 **What this shows**
 
-- Every mode finds the right passage somewhere in the top 5. The difference is
-  **ranking**: reranking puts the right passage *first* 94.8% of the time instead of
-  81%. That matters because a small model mostly answers from the first sources.
+- Every mode finds the right passage for all 58 correctly spelled questions. The
+  difference is **ranking**: reranking puts the right passage *first* 95.6% of the time
+  instead of 78%. That matters because a small model mostly answers from the first sources.
+- **Misspellings are where vectors alone fall short** (70%): BM25 still matches the
+  words that are spelled right. The one miss in every mode, *"wat is a contxt windo"*,
+  has no correctly spelled key word left to match.
 - Reranking costs about **2 seconds per question on a laptop CPU**. That's worth it
   here, because generating the answer takes longer anyway; for a latency-critical
   service, hybrid without reranking is the cheaper option.
@@ -47,24 +51,30 @@ with an evidence phrase that must appear in the retrieved chunk.
   They look relevant to search, so refusing them is the model's job.
 
 **Answer quality** is measured with `python -m evaluation.run answers` on the same
-70 questions, using hybrid + rerank and `llama3.2:3b` both to answer and to judge
+80 questions, using hybrid + rerank and `llama3.2:3b` both to answer and to judge
 (laptop CPU, no GPU).
 
 | Metric | Result |
 |---|---:|
-| Correctness (answerable questions) | 96.6% (56 / 58) |
-| Faithfulness to the sources | 94.8% (55 / 58) |
-| Citation accuracy | 100% (58 / 58) |
+| Correctness (answerable questions) | 94.1% (64 / 68) |
+| Faithfulness to the sources | 91.0% (61 / 67) |
+| Citation accuracy | 100% (67 / 67) |
 | Refusal accuracy (unanswerable questions) | 100% (12 / 12) |
-| Latency p50 / p95 | 28.8 s / 40.2 s |
-| Tokens per question (in / out) | 790 / 23 |
+| Latency p50 / p95 | 33.1 s / 52.3 s |
+| Tokens per question (in / out) | 867 / 23 |
 | Cost per question | $0 (runs locally) |
 
 - **Every unanswerable question got "I don't know"**, including the 7 near-misses
   that got past the search cutoff, so the prompt handles what the cutoff can't.
-- **Faithfulness is the weakest score:** the judge marked 3 answers as not fully
-  supported by the sources. Small models tend to add details, and the judge is
-  the same small model, so treat this number as approximate.
+- **9 of the 10 misspelled questions were answered correctly.**
+- **Faithfulness is the weakest score, and partly noise.** The judge is the same small
+  model, and grading the same saved answers twice gave 93.1% and 91.4%. Reading the
+  flagged answers shows several are accurate paraphrases, so treat it as approximate.
+- **Benchmarking found two bugs.** The model sometimes cites as `[1, 4]`, which the
+  app didn't recognise, so those answers showed no sources. And when only an error
+  code was asked, the model mixed in the fix for the code listed next to it; a prompt
+  rule to answer only about the code asked fixed that, with correctness, citations
+  and refusals unchanged on the original 70 questions.
 - **Fixing the grader raised faithfulness from 89.7% to 94.8%.** Reading the
   failures showed the judge, not the answers, was often wrong: it marked
   paraphrases as incorrect and true extra details from the sources as made up.
@@ -87,7 +97,7 @@ flowchart LR
     subgraph Answering
         Q[Question] --> S1[Vector search]
         Q --> S2[BM25 search]
-        S1 --> G{Closest chunk<br/>similar enough?}
+        S1 --> G{Closest chunk similar enough,<br/>or a rare keyword matches?}
         G -- no --> IDK[I don't know]
         G -- yes --> RRF[Reciprocal Rank Fusion]
         S2 --> RRF
@@ -123,6 +133,11 @@ flowchart LR
   questions score 0.07–0.15 and the weakest answerable question scores 0.24, but one
   unanswerable near-miss scores 0.25. No single cutoff separates them, so the cutoff
   only catches the clearly off-topic questions and the model handles the rest.
+- **Misspellings get a second chance.** *"chunck overlap"* scores 0.14, as low as
+  off-topic questions. Between 0.1 and 0.2 a question still passes if it shares a rare
+  word with the documents (here "overlap"); the off-topic questions in that range share
+  none. A reranker score didn't work for this: it scores misspellings as low as
+  off-topic questions.
 - **Reciprocal Rank Fusion instead of mixing scores.** Cosine similarity and BM25
   scores are on different scales; RRF only uses ranks, so it needs no tuning.
 - **Shared knowledge base, private history.** Any signed-in user can add documents;
@@ -179,8 +194,8 @@ python -m evaluation.run answers
 python -m evaluation.run regrade
 ```
 
-The first command needs no LLM. The second needs Ollama running and takes a few
-minutes. The third grades the saved answers again without regenerating them, which
+The first command needs no LLM. The second needs Ollama running and takes about an
+hour on a laptop CPU. The third grades the saved answers again without regenerating them, which
 is useful after changing the judge. Results are saved to `evaluation/results/` and shown on the dashboard.
 Questions live in `evaluation/questions.jsonl`.
 
@@ -197,7 +212,7 @@ npm test
 npm run lint
 ```
 
-There are 120 backend tests and 12 frontend tests. They use a fake embedder and
+There are 145 backend tests and 14 frontend tests. They use a fake embedder and
 model, so they run offline in seconds. CI also runs the retrieval benchmark with the
 real models and **fails the build if Recall@5 drops below 90%**.
 
@@ -212,6 +227,7 @@ real models and **fails the build if Recall@5 drops below 90%**.
 | `GET` | `/api/documents` | ✔ | List documents |
 | `DELETE` | `/api/documents/{doc_id}` | ✔ | Remove a document |
 | `POST` | `/api/ask` | ✔ | `{"question": "...", "mode": "hybrid_rerank"}` returns an answer with citations |
+| `POST` | `/api/ask/stream` | ✔ | Same input; streams the answer as newline-delimited JSON (`delta` lines, then one `answer` line). The chat page uses this |
 | `GET` / `DELETE` | `/api/history` | ✔ | Your chat history |
 | `GET` | `/api/evaluation` | | Benchmark results for the dashboard |
 
@@ -224,7 +240,7 @@ on a Hugging Face Space.
 
 ```
 app/            FastAPI app: ingestion, retrieval, RAG, auth, database
-evaluation/     70-question benchmark, metrics, LLM judge, saved results
+evaluation/     80-question benchmark, metrics, LLM judge, saved results
 frontend/       React + Vite + TypeScript app
 tests/          Backend tests
 data/sample_docs/  Sample documents (the Atlas Sync manual is fictional)
@@ -242,8 +258,9 @@ deploy/         Hugging Face Space setup
 - **The answer judge is the same small model** that writes the answers; a stronger
   judge would give more reliable faithfulness scores.
 - **Scanned PDFs aren't supported** (they need OCR).
-- **The answer scores above predate the latest prompt change**, which helps the model
-  handle informal questions like *"E1042 can i know what is this"*. Very short
-  fragments can still get "I don't know" from the small 3B model.
+- **Heavily misspelled questions can still get "I don't know"** when no key word is
+  spelled right, like *"wat is a contxt windo"*.
+- **Answers take about 30 seconds** because the model runs on a CPU; a GPU or a hosted
+  model would bring that down to a few seconds.
 - **Not run yet:** the Docker image and the Hugging Face deployment. The Docker
   image is built by CI on every push.

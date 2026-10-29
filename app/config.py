@@ -18,13 +18,17 @@ class Settings(BaseSettings):
     collection_name: str = "documents"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
-    llm_provider: str = "ollama"
     ollama_host: str = "http://localhost:11434"
     llm_model: str = "llama3.2:3b"
+    # Keep the model in memory between questions (Ollama's default is 5m) to skip reloads.
+    llm_keep_alive: str = "30m"
+    # Answers average ~25 tokens; the cap stops a runaway answer taking minutes on a CPU.
+    max_answer_tokens: int = 300
 
     chunk_size: int = 800
     chunk_overlap: int = 150
-    top_k: int = 5
+    # Reading the chunks is most of the answer time on a CPU. The evaluation sets its own k.
+    top_k: int = 3
 
     # semantic | hybrid | hybrid_rerank (see app/retrieval.py)
     search_mode: str = "hybrid_rerank"
@@ -36,6 +40,10 @@ class Settings(BaseSettings):
     # evaluation set: off-topic questions score 0.07-0.15, the weakest answerable one
     # 0.24. Near-miss questions score higher and are left to the model to refuse.
     min_score: float = 0.2
+    # Misspelled questions can score below min_score ("chunck overlap": 0.14). Between
+    # this and min_score a question still passes if it shares a rare word with the
+    # documents; off-topic questions in that range (0.14-0.15) share none.
+    keyword_min_score: float = 0.1
     max_upload_mb: int = 20
 
     database_url: str = f"sqlite:///{(PROJECT_ROOT / 'data' / 'app.db').as_posix()}"

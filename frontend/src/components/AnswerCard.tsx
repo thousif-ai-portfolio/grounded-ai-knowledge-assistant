@@ -1,15 +1,9 @@
 import { useState } from 'react'
-import type { Citation, SearchMode } from '../types'
+import type { Answer, Citation } from '../types'
 import { MODE_LABELS } from '../types'
 
-export interface AnswerView {
-  answer: string
-  citations: Citation[]
-  grounded: boolean
-  mode: SearchMode
-  retrieval_ms?: number
-  generation_ms?: number
-}
+export type AnswerView = Pick<Answer, 'answer' | 'citations' | 'grounded' | 'mode'> &
+  Partial<Pick<Answer, 'retrieval_ms' | 'generation_ms'>>
 
 const IDK = "I don't know."
 

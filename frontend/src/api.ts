@@ -36,7 +36,7 @@ export function setToken(token: string | null): void {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function send(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers)
   const token = getToken()
   if (token) headers.set('Authorization', `Bearer ${token}`)
@@ -53,7 +53,47 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new ApiError(response.status, message)
   }
+  return response
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await send(path, init)
   return response.status === 204 ? (undefined as T) : ((await response.json()) as T)
+}
+
+type StreamEvent =
+  | { type: 'delta'; text: string }
+  | ({ type: 'answer' } & Answer)
+  | { type: 'error'; detail: string }
+
+/** Calls `onText` with each piece of the answer as the model writes it; resolves with the final answer. */
+async function askStream(
+  question: string,
+  mode: SearchMode,
+  onText: (text: string) => void,
+): Promise<Answer> {
+  const response = await send('/ask/stream', json({ question, mode }))
+  if (!response.body) throw new ApiError(0, 'The answer stream was empty')
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (value) buffer += value
+    // One JSON event per line; the last line may still be incomplete.
+    const lines = buffer.split('\n')
+    buffer = done ? '' : (lines.pop() ?? '')
+    for (const line of lines) {
+      if (!line.trim()) continue
+      const event = JSON.parse(line) as StreamEvent
+      if (event.type === 'delta') onText(event.text)
+      else if (event.type === 'error') throw new ApiError(503, event.detail)
+      else {
+        const { type: _, ...answer } = event
+        return answer
+      }
+    }
+    if (done) throw new ApiError(0, 'The answer stream ended early')
+  }
 }
 
 const json = (body: unknown): RequestInit => ({
@@ -88,7 +128,7 @@ export const api = {
   deleteDocument: (docId: string) =>
     request<void>(`/documents/${encodeURIComponent(docId)}`, { method: 'DELETE' }),
 
-  ask: (question: string, mode: SearchMode) => request<Answer>('/ask', json({ question, mode })),
+  askStream,
 
   history: () => request<HistoryItem[]>('/history'),
 

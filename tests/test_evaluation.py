@@ -22,6 +22,7 @@ def test_dataset_size_and_mix():
     assert sum(counts.values()) >= 50
     assert counts["unanswerable"] >= 10
     assert counts["keyword"] >= 10
+    assert counts["misspelled"] >= 10
 
 
 @pytest.mark.parametrize("item", [i for i in load_questions() if i.answerable], ids=lambda i: i.id)

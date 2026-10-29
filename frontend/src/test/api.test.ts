@@ -51,6 +51,35 @@ describe('api', () => {
     await expect(api.register('bob', 'short')).rejects.toThrow('at least 8 characters')
   })
 
+  it('streams answer text, then resolves with the final answer', async () => {
+    const answer = { answer: 'Full [1].', citations: [], grounded: true, mode: 'hybrid_rerank' }
+    const lines = [
+      '{"type":"delta","text":"Fu"}\n{"type":"del',
+      'ta","text":"ll [1]."}\n',
+      `${JSON.stringify({ type: 'answer', ...answer })}\n`,
+    ]
+    const body = new ReadableStream({
+      start(controller) {
+        for (const line of lines) controller.enqueue(new TextEncoder().encode(line))
+        controller.close()
+      },
+    })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status: 200 })))
+    const pieces: string[] = []
+
+    const result = await api.askStream('q', 'hybrid_rerank', (text) => pieces.push(text))
+
+    expect(pieces).toEqual(['Fu', 'll [1].'])
+    expect(result).toEqual(answer)
+  })
+
+  it('rejects when the stream reports an error', async () => {
+    const body = '{"type":"error","detail":"Cannot reach Ollama"}\n'
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status: 200 })))
+
+    await expect(api.askStream('q', 'semantic', () => {})).rejects.toThrow('Cannot reach Ollama')
+  })
+
   it('handles empty 204 responses', async () => {
     mockFetch(204, null)
 

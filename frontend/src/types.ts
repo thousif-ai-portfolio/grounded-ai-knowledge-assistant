@@ -58,7 +58,6 @@ export interface ModeResult {
   latency_p50_ms: number
   latency_p95_ms: number
   by_type: Record<string, { questions: number; recall_at_5: number; mrr_at_5: number }>
-  missed: string[]
 }
 
 export interface RetrievalReport {

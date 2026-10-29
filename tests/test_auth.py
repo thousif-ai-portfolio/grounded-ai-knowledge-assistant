@@ -79,6 +79,7 @@ def test_wrong_password_is_rejected(client):
     [
         ("get", "/api/documents"),
         ("post", "/api/ask"),
+        ("post", "/api/ask/stream"),
         ("get", "/api/history"),
         ("get", "/api/auth/me"),
         ("delete", "/api/documents/abc"),

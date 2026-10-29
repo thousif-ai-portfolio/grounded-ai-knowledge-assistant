@@ -44,7 +44,7 @@ jobs:
           path: ~/.cache/huggingface
           key: hf-models-${{ hashFiles('app/config.py') }}
       # Fails the build if a change makes search worse than the agreed threshold.
-      - name: Run the 70-question retrieval benchmark
+      - name: Run the 80-question retrieval benchmark
         run: python -m evaluation.run retrieval --min-recall 0.9
       - uses: actions/upload-artifact@v4
         if: always()

@@ -31,6 +31,15 @@ def test_bm25_on_empty_corpus_returns_nothing():
     assert Bm25Index([]).search("anything", k=5) == []
 
 
+def test_rare_terms_are_distinctive_words_from_the_documents():
+    index = Bm25Index([hit("a", "chunk overlap repeats text"), hit("b", "chunk size and text")])
+
+    assert index.has_rare_term("wat is chunck overlap")  # "overlap" is in one chunk
+    assert not index.has_rare_term("chunk text")  # in every chunk
+    assert not index.has_rare_term("population of tokyo")  # not in the documents
+    assert not Bm25Index([]).has_rare_term("overlap")
+
+
 def test_rrf_rewards_items_ranked_well_in_both_lists():
     fused = reciprocal_rank_fusion([["a", "b", "c"], ["b", "d"]], k=60)
 
@@ -79,6 +88,19 @@ def test_semantic_and_hybrid_modes_skip_the_reranker(loaded, reranker):
 def test_off_topic_question_returns_nothing_in_every_mode(loaded):
     for mode in SearchMode:
         assert loaded.retrieve("zebra giraffe safari", mode=mode) == []
+
+
+@pytest.mark.parametrize("mode", list(SearchMode))
+def test_borderline_question_passes_only_with_a_rare_keyword(loaded, settings, mode):
+    loaded.add_document("new.md", b"Quokka habitats chunk notes.")
+    settings.min_score = 0.9  # every question is now borderline
+    settings.keyword_min_score = 0.05
+
+    assert "new.md" in [h.filename for h in loaded.retrieve("quokka habitts", mode=mode)]
+    assert loaded.retrieve("chunk zebra", mode=mode) == []  # "chunk" is everywhere
+
+    settings.keyword_min_score = 0.6  # below this nothing passes
+    assert loaded.retrieve("quokka habitts", mode=mode) == []
 
 
 def test_keyword_index_updates_after_add_and_delete(loaded):

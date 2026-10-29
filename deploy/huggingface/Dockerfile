@@ -31,7 +31,6 @@ RUN pip install -r requirements.txt
 
 COPY app/ app/
 COPY evaluation/ evaluation/
-COPY scripts/ scripts/
 COPY data/sample_docs/ data/sample_docs/
 COPY --from=frontend /frontend/dist frontend/dist
 

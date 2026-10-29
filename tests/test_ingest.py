@@ -30,6 +30,11 @@ def test_extract_rejects_unknown_types():
         extract_pages("image.png", b"\x89PNG")
 
 
+def test_extract_rejects_broken_pdfs():
+    with pytest.raises(UnsupportedFileError, match="not a readable PDF"):
+        extract_pages("renamed.pdf", b"not really a pdf")
+
+
 def test_chunks_respect_size_and_split_on_spaces():
     words = " ".join(f"word{i}" for i in range(300))
     chunks = chunk_pages([Page(1, words)], size=100, overlap=20)

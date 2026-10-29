@@ -10,6 +10,8 @@ interface Turn {
   key: string
   question: string
   answer?: AnswerView
+  // The answer so far, while the model is still writing it.
+  draft?: string
   error?: string
 }
 
@@ -51,8 +53,10 @@ export function ChatPage({ onError }: { onError: (err: unknown) => string }) {
     setQuestion('')
     setBusy(true)
     try {
-      const answer = await api.ask(trimmed, mode)
-      setTurns((prev) => prev.map((t) => (t.key === key ? { ...t, answer } : t)))
+      const answer = await api.askStream(trimmed, mode, (text) =>
+        setTurns((prev) => prev.map((t) => (t.key === key ? { ...t, draft: (t.draft ?? '') + text } : t))),
+      )
+      setTurns((prev) => prev.map((t) => (t.key === key ? { ...t, answer, draft: undefined } : t)))
     } catch (err) {
       const error = onError(err)
       setTurns((prev) => prev.map((t) => (t.key === key ? { ...t, error } : t)))
@@ -99,11 +103,20 @@ export function ChatPage({ onError }: { onError: (err: unknown) => string }) {
           </div>
           {turn.answer && <AnswerCard answer={turn.answer} />}
           {turn.error && <ErrorNote message={turn.error} />}
-          {!turn.answer && !turn.error && (
-            <p className="text-sm text-slate-500" aria-live="polite">
-              Searching the documents and writing an answer…
-            </p>
-          )}
+          {!turn.answer &&
+            !turn.error &&
+            (turn.draft ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+                <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                  {turn.draft}
+                  <span className="ml-0.5 inline-block h-4 w-1.5 animate-pulse bg-slate-400 align-text-bottom" />
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500" aria-live="polite">
+                Searching the documents and reading the best matches… on a CPU this can take a minute.
+              </p>
+            ))}
         </div>
       ))}
       <div ref={bottom} />

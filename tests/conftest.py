@@ -3,6 +3,7 @@
 import hashlib
 import math
 import re
+from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -42,6 +43,12 @@ class FakeLLM:
         if isinstance(self.reply, Exception):
             raise self.reply
         return Generation(self.reply, input_tokens=len(prompt.split()), output_tokens=5)
+
+    def stream(self, system: str, prompt: str) -> Iterator[Generation]:
+        whole = self.generate(system, prompt)
+        for word in re.findall(r"\S+\s*", whole.text):
+            yield Generation(word)
+        yield Generation("", whole.input_tokens, whole.output_tokens)
 
 
 class FakeReranker:

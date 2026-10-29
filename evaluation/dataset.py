@@ -13,7 +13,8 @@ QUESTIONS_FILE = Path(__file__).resolve().parent / "questions.jsonl"
 class EvalItem:
     id: str
     question: str
-    type: str  # "natural", "keyword" (exact codes, names, numbers) or "unanswerable"
+    # "natural", "keyword" (exact codes, names, numbers), "misspelled" or "unanswerable"
+    type: str
     source: str | None = None  # file that contains the answer
     # Exact phrase from that file that proves the answer, or a list of phrases when the
     # document states the answer in more than one place.

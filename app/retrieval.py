@@ -1,6 +1,7 @@
 """Search strategies beyond plain vector search: BM25 keywords, fusion, and reranking."""
 
 import re
+from collections import Counter
 from enum import StrEnum
 from typing import Protocol
 
@@ -26,7 +27,15 @@ class Bm25Index:
 
     def __init__(self, chunks: list[SearchHit]) -> None:
         self._chunks = chunks
-        self._bm25 = BM25Okapi([tokenize(c.text) for c in chunks]) if chunks else None
+        tokenized = [tokenize(c.text) for c in chunks]
+        self._bm25 = BM25Okapi(tokenized) if chunks else None
+        self._doc_freq = Counter(token for tokens in tokenized for token in set(tokens))
+
+    def has_rare_term(self, query: str) -> bool:
+        """True if the query contains a distinctive word from the documents: 4+ characters
+        and in at most 10% of chunks, like an error code or a correctly spelled term."""
+        limit = max(1, len(self._chunks) // 10)
+        return any(len(t) >= 4 and 0 < self._doc_freq[t] <= limit for t in tokenize(query))
 
     def search(self, query: str, k: int) -> list[SearchHit]:
         if self._bm25 is None:
