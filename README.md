@@ -8,6 +8,9 @@ It runs entirely on your own machine for free: local models, no API keys.
 
 ![CI](https://github.com/thousif-ai-portfolio/grounded-ai-knowledge-assistant/actions/workflows/ci.yml/badge.svg)
 
+**Video walkthrough (2.5 min):** [docs/demo.mp4](docs/demo.mp4) · narration in
+[docs/video-script.md](docs/video-script.md)
+
 ## Features
 
 - **Cited answers, streamed.** The answer appears as the model writes it. Every claim
@@ -75,12 +78,13 @@ phrase that must appear in the retrieved chunk.
   code was asked, the model mixed in the fix for the code listed next to it; a prompt
   rule to answer only about the code asked fixed that, with correctness, citations
   and refusals unchanged on the original 70 questions.
-- **Fixing the grader raised faithfulness from 89.7% to 94.8%.** Reading the
-  failures showed the judge, not the answers, was often wrong: it marked
-  paraphrases as incorrect and true extra details from the sources as made up.
-  Clearer judge instructions with worked examples fixed that, and letting a
-  question accept more than one evidence passage fixed a citation that pointed
-  to a second valid page (98.3% → 100%). The answers themselves didn't change.
+- **Fixing the grader raised faithfulness from 89.7% to 94.8%** on the earlier
+  70-question version of the benchmark. Reading the failures showed the judge, not
+  the answers, was often wrong: it marked paraphrases as incorrect and true extra
+  details from the sources as made up. Clearer judge instructions with worked
+  examples fixed that, and letting a question accept more than one evidence passage
+  fixed a citation that pointed to a second valid page (98.3% → 100%). The answers
+  themselves didn't change.
 - **Latency is almost all generation** on a laptop CPU; search and reranking take
   about 2 seconds of it.
 
@@ -233,8 +237,9 @@ real models and **fails the build if Recall@5 drops below 90%**.
 
 ## Deploy
 
-See [deploy/huggingface/README.md](deploy/huggingface/README.md) to host a free demo
-on a Hugging Face Space.
+See [deploy/huggingface/README.md](deploy/huggingface/README.md) to host it on a
+Hugging Face Space. Docker Spaces need a Hugging Face PRO account, so there is no live
+demo; the [video walkthrough](docs/demo.mp4) shows the app running.
 
 ## Project structure
 
@@ -246,6 +251,7 @@ tests/          Backend tests
 data/sample_docs/  Sample documents (the Atlas Sync manual is fictional)
 scripts/        Generates the sample PDF
 deploy/         Hugging Face Space setup
+docs/           Video walkthrough and its narration
 ```
 
 ## Limitations
@@ -262,5 +268,8 @@ deploy/         Hugging Face Space setup
   spelled right, like *"wat is a contxt windo"*.
 - **Answers take about 30 seconds** because the model runs on a CPU; a GPU or a hosted
   model would bring that down to a few seconds.
-- **Not run yet:** the Docker image and the Hugging Face deployment. The Docker
-  image is built by CI on every push.
+- **No live demo.** Hugging Face Docker Spaces need a PRO account, so the Space setup
+  in `deploy/huggingface/` has not been deployed. The Docker image is built by CI on
+  every push and was run locally: it started in 20 seconds and answered with a correct
+  citation, using Ollama on the host. The bundled Ollama service in `docker-compose.yml`
+  has not been run on this laptop (8 GB of RAM).
