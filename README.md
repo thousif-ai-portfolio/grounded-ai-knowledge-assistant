@@ -264,6 +264,11 @@ docs/           Video walkthrough and its narration
 - **The answer judge is the same small model** that writes the answers; a stronger
   judge would give more reliable faithfulness scores.
 - **Scanned PDFs aren't supported** (they need OCR).
+- **Prompt injection is only partly handled.** The separate test harness
+  [llm-eval-quality-gate](https://github.com/thousif-ai-portfolio/llm-eval-quality-gate)
+  found two cases it gets wrong: it obeys an instruction inside the question to append a
+  code, and it repeats a poisoned document's request to email a password. Treating
+  retrieved text strictly as data, or an output filter, would fix both.
 - **Heavily misspelled questions can still get "I don't know"** when no key word is
   spelled right, like *"wat is a contxt windo"*.
 - **Answers take about 30 seconds** because the model runs on a CPU; a GPU or a hosted
