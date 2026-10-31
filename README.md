@@ -235,6 +235,46 @@ real models and **fails the build if Recall@5 drops below 90%**.
 | `GET` / `DELETE` | `/api/history` | ✔ | Your chat history |
 | `GET` | `/api/evaluation` | | Benchmark results for the dashboard |
 
+### Sample output
+
+Real responses from `POST /api/ask` on a laptop CPU (citation text shortened):
+
+```json
+{
+  "answer": "Error E1042: the local cache is full. Run atlas prune or increase the space available to cache_dir. [1]",
+  "citations": [
+    {
+      "number": 1,
+      "filename": "atlas-sync-manual.pdf",
+      "page": 4,
+      "text": "Error Codes E1001: the configuration file atlas.toml could n...",
+      "score": 4.52
+    }
+  ],
+  "grounded": true,
+  "mode": "hybrid_rerank",
+  "retrieval_ms": 4403.3,
+  "generation_ms": 47675.7,
+  "input_tokens": 621,
+  "output_tokens": 27
+}
+```
+
+Asked about an error code that is not in the manual (E4040), it refuses:
+
+```json
+{
+  "answer": "I don't know.",
+  "citations": [],
+  "grounded": false,
+  "mode": "hybrid_rerank",
+  "retrieval_ms": 1717.9,
+  "generation_ms": 11295.5,
+  "input_tokens": 588,
+  "output_tokens": 6
+}
+```
+
 ## Deploy
 
 See [deploy/huggingface/README.md](deploy/huggingface/README.md) to host it on a
