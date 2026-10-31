@@ -76,3 +76,18 @@ def test_text_files_in_common_windows_encodings_are_read_correctly(data):
     [page] = extract_pages("menu.txt", data)
 
     assert page.text == "Café menu"
+
+
+def test_extract_rejects_password_protected_pdfs():
+    doc = pymupdf.open()
+    doc.new_page().insert_text((72, 72), "secret")
+    data = doc.tobytes(encryption=pymupdf.PDF_ENCRYPT_AES_256, user_pw="u", owner_pw="o")
+
+    with pytest.raises(UnsupportedFileError, match="password-protected"):
+        extract_pages("locked.pdf", data)
+
+
+def test_damaged_utf16_text_is_read_without_crashing():
+    [page] = extract_pages("notes.txt", bytes([0xFF, 0xFE, 0x41]))
+
+    assert isinstance(page.text, str)

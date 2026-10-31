@@ -29,7 +29,7 @@ def decode_text(data: bytes) -> str:
     """UTF-8 (with or without BOM), UTF-16 with a BOM, else Windows-1252, the usual
     encodings of text files saved on Windows."""
     if data.startswith((b"\xff\xfe", b"\xfe\xff")):
-        return data.decode("utf-16")
+        return data.decode("utf-16", errors="replace")
     try:
         return data.decode("utf-8-sig")
     except UnicodeDecodeError:
@@ -41,6 +41,8 @@ def extract_pages(filename: str, data: bytes) -> list[Page]:
     if suffix == ".pdf":
         try:
             with pymupdf.open(stream=data, filetype="pdf") as doc:
+                if doc.needs_pass:
+                    raise UnsupportedFileError(f"'{filename}' is password-protected")
                 return [Page(number=i + 1, text=page.get_text()) for i, page in enumerate(doc)]
         except pymupdf.FileDataError as exc:
             raise UnsupportedFileError(f"'{filename}' is not a readable PDF") from exc

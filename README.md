@@ -218,7 +218,7 @@ npm test
 npm run lint
 ```
 
-There are 154 backend tests and 14 frontend tests. They use a fake embedder and
+There are 156 backend tests and 14 frontend tests. They use a fake embedder and
 model, so they run offline in seconds. CI also runs the retrieval benchmark with the
 real models and **fails the build if Recall@5 drops below 90%**.
 
@@ -298,9 +298,9 @@ docs/           Video walkthrough and its narration
 
 ## Limitations
 
-- **The benchmark corpus is small** (7 documents, about 20 chunks), so Recall@5
-  saturates at 100%. A larger corpus, for example public research papers, would show
-  bigger differences between modes.
+- **The benchmark corpus is small** (7 documents, about 20 chunks), so Recall@5 is
+  close to saturated (98.5%). A larger corpus, for example public research papers,
+  would show bigger differences between modes.
 - **The `min_score` cutoff was tuned on the same questions it's evaluated on**, so
   the rejection rate is optimistic.
 - **The answer judge is the same small model** that writes the answers; a stronger
