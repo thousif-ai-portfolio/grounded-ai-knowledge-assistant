@@ -37,6 +37,8 @@ class UploadOut(BaseModel):
 
 
 class AskIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     question: str = Field(min_length=1, max_length=2000)
     top_k: int | None = Field(default=None, ge=1, le=20)
     mode: SearchMode | None = None

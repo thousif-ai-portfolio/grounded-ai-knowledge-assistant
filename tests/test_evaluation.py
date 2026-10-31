@@ -76,6 +76,7 @@ def test_percentile_and_rate():
         ('{"faithful": true, "correct": false}', True, False, True),
         ('Sure!\n```json\n{"faithful": true, "correct": true}\n```', True, True, True),
         ("I think it is fine.", False, False, False),
+        ('{"faithful": "false", "correct": "no"}', False, False, True),
     ],
 )
 def test_parse_verdict(reply, faithful, correct, parsed):

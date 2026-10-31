@@ -25,6 +25,17 @@ class Chunk:
     index: int
 
 
+def decode_text(data: bytes) -> str:
+    """UTF-8 (with or without BOM), UTF-16 with a BOM, else Windows-1252, the usual
+    encodings of text files saved on Windows."""
+    if data.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return data.decode("utf-16")
+    try:
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return data.decode("cp1252", errors="replace")
+
+
 def extract_pages(filename: str, data: bytes) -> list[Page]:
     suffix = Path(filename).suffix.lower()
     if suffix == ".pdf":
@@ -34,7 +45,7 @@ def extract_pages(filename: str, data: bytes) -> list[Page]:
         except pymupdf.FileDataError as exc:
             raise UnsupportedFileError(f"'{filename}' is not a readable PDF") from exc
     if suffix in {".txt", ".md"}:
-        return [Page(number=1, text=data.decode("utf-8", errors="replace"))]
+        return [Page(number=1, text=decode_text(data))]
     supported = ", ".join(sorted(SUPPORTED_EXTENSIONS))
     raise UnsupportedFileError(f"Unsupported file type '{suffix}'. Supported: {supported}")
 

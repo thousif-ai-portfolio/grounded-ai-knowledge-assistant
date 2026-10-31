@@ -131,6 +131,22 @@ def test_ask_stream_reports_model_errors(client, auth, llm):
     assert events == [{"type": "error", "detail": "Cannot reach Ollama"}]
 
 
+def test_ask_stream_reports_unexpected_errors_instead_of_cutting_off(client, auth, llm):
+    upload(client, auth)
+    llm.reply = RuntimeError("reranker crashed")
+
+    events = stream_events(client, auth)
+
+    assert [e["type"] for e in events] == ["error"]
+    assert "went wrong" in events[0]["detail"]
+
+
+def test_a_blank_question_is_rejected(client, auth):
+    reply = client.post("/api/ask", json={"question": "   "}, headers=auth)
+
+    assert reply.status_code == 422
+
+
 def test_evaluation_results_are_served(client, settings):
     assert client.get("/api/evaluation").json() == {"retrieval": None, "answers": None}
 

@@ -28,7 +28,8 @@ from evaluation.judge import judge_answer
 from evaluation.metrics import mrr_at, percentile, rate, recall_at
 
 DOCS_DIR = PROJECT_ROOT / "data" / "sample_docs"
-RESULTS_DIR = Path(__file__).resolve().parent / "results"
+# Where the dashboard reads results from (RAG_EVAL_RESULTS_DIR), so the two always agree.
+RESULTS_DIR = get_settings().eval_results_dir
 K = 5
 # What is saved for each answer before grading; `regrade` reuses these.
 ANSWER_FIELDS = (
@@ -172,8 +173,10 @@ def regrade_answers(
     rows = []
     for n, old in enumerate(saved["per_question"], 1):
         print(f"  [{n}/{len(saved['per_question'])}] {old['id']}", flush=True)
-        item = by_id[old["id"]]
-        row = {key: old[key] for key in ANSWER_FIELDS}
+        item = by_id.get(old["id"])
+        if item is None:  # question removed from the set since the answers were saved
+            continue
+        row = {key: old[key] for key in ANSWER_FIELDS} | {"type": item.type}
         if item.answerable and not row["refused"]:
             row |= grade(rag, item, row["answer"], mode)
         rows.append(row)
@@ -204,9 +207,9 @@ def summarize(rows: list[dict], settings: Settings, mode: SearchMode) -> dict:
             "judge_parse_failures": sum(1 for r in answered if not r["judge_parsed"]),
             "latency_p50_ms": round(percentile(latencies, 50), 1),
             "latency_p95_ms": round(percentile(latencies, 95), 1),
-            "avg_input_tokens": round(input_tokens / len(rows), 1),
-            "avg_output_tokens": round(output_tokens / len(rows), 1),
-            "cost_per_question_usd": round(cost / len(rows), 6),
+            "avg_input_tokens": round(input_tokens / max(len(rows), 1), 1),
+            "avg_output_tokens": round(output_tokens / max(len(rows), 1), 1),
+            "cost_per_question_usd": round(cost / max(len(rows), 1), 6),
         },
         "per_question": rows,
     }

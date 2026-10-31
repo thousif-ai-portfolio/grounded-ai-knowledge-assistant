@@ -83,7 +83,14 @@ def test_delete_document(rag):
 
 @pytest.mark.parametrize(
     ("text", "expected"),
-    [("I don't know.", True), ("i do not know", True), ("I know this [1]", False)],
+    [
+        ("I don't know.", True),
+        ("i do not know", True),
+        ("I don't know. [1]", True),
+        ("I don't know; the sources don't say.", True),
+        ("I don't know the exact date, but [1] says 2020.", False),
+        ("I know this [1]", False),
+    ],
 )
 def test_is_idk(text, expected):
     assert is_idk(text) is expected

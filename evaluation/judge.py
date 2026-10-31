@@ -59,7 +59,9 @@ def parse_verdict(reply: str) -> Verdict:
         try:
             data = json.loads(match.group(0))
             return Verdict(
-                faithful=bool(data.get("faithful")), correct=bool(data.get("correct")), parsed=True
+                faithful=data.get("faithful") is True,
+                correct=data.get("correct") is True,
+                parsed=True,
             )
         except json.JSONDecodeError:
             pass

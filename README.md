@@ -184,11 +184,13 @@ API runs on port 8000.
 ### With Docker
 
 ```bash
+# PowerShell: $env:RAG_JWT_SECRET = python -c "import secrets; print(secrets.token_urlsafe(48))"
+export RAG_JWT_SECRET=$(python -c "import secrets; print(secrets.token_urlsafe(48))")
 docker compose up --build
 ```
 
 This starts the app and an Ollama container, and downloads the answer model on first
-start. Set `RAG_JWT_SECRET` to a long random value before exposing it anywhere.
+start. `RAG_JWT_SECRET` is required: anyone who knows it could sign in as any user.
 
 ## Run the benchmark
 
@@ -216,7 +218,7 @@ npm test
 npm run lint
 ```
 
-There are 145 backend tests and 14 frontend tests. They use a fake embedder and
+There are 154 backend tests and 14 frontend tests. They use a fake embedder and
 model, so they run offline in seconds. CI also runs the retrieval benchmark with the
 real models and **fails the build if Recall@5 drops below 90%**.
 
@@ -309,6 +311,8 @@ docs/           Video walkthrough and its narration
   found two cases it gets wrong: it obeys an instruction inside the question to append a
   code, and it repeats a poisoned document's request to email a password. Treating
   retrieved text strictly as data, or an output filter, would fix both.
+- **One shared knowledge base.** Chat history is private, but every signed-in user can
+  upload and delete the shared documents; there are no roles.
 - **Heavily misspelled questions can still get "I don't know"** when no key word is
   spelled right, like *"wat is a contxt windo"*.
 - **Answers take about 30 seconds** because the model runs on a CPU; a GPU or a hosted

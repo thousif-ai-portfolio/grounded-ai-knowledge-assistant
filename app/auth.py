@@ -22,6 +22,10 @@ def verify_password(password: str, password_hash: str) -> bool:
     return _hasher.verify(password, password_hash)
 
 
+# Checked against when the username does not exist, so that login costs the same.
+DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
+
+
 def resolve_secret(configured: str) -> str:
     """Use the configured secret, or a random one (tokens then reset on restart)."""
     return configured or secrets.token_urlsafe(32)

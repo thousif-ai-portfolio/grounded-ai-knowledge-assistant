@@ -28,8 +28,8 @@ services:
     environment:
       RAG_OLLAMA_HOST: http://ollama:11434
       RAG_LLM_MODEL: ${RAG_LLM_MODEL:-llama3.2:3b}
-      # Change this! Anyone who knows it can forge login tokens.
-      RAG_JWT_SECRET: ${RAG_JWT_SECRET:-change-me-to-a-long-random-string}
+      # Required: anyone who knows it can forge login tokens, so there is no default.
+      RAG_JWT_SECRET: ${RAG_JWT_SECRET:?Set RAG_JWT_SECRET to a long random string}
     volumes:
       # Keeps accounts, chat history and uploaded documents across restarts. On first
       # start Docker copies in the sample documents already indexed in the image.

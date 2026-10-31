@@ -2,6 +2,7 @@
 
 import hashlib
 import re
+import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
@@ -70,8 +71,14 @@ def build_prompt(question: str, hits: list[SearchHit]) -> str:
 
 
 def is_idk(text: str) -> bool:
+    """A refusal: "I don't know", even with a stray citation ("I don't know. [1]"). A reply
+    that goes on to cite an answer ("I don't know the date, but [1] says 2020") is not."""
     normalized = text.strip().lower().replace("’", "'")
-    return normalized.startswith(("i don't know", "i do not know"))
+    if not normalized.startswith(("i don't know", "i do not know")):
+        return False
+    rest = re.sub(r"\[[\d,\s]+\]", "", normalized)
+    rest = re.sub(r"^i (?:don't|do not) know", "", rest).strip(" .!")
+    return not rest or not cited_numbers(text)
 
 
 def cited_numbers(text: str) -> set[int]:
@@ -99,6 +106,7 @@ class RagService:
         self._settings = settings
         self._reranker = reranker
         self._bm25: Bm25Index | None = None
+        self._bm25_lock = threading.Lock()
 
     @property
     def llm(self) -> LLM:
@@ -115,23 +123,26 @@ class RagService:
         if not chunks:
             raise EmptyDocumentError(f"No text found in '{filename}'. Scanned PDFs need OCR first.")
         embeddings = self._embedder.embed([chunk.text for chunk in chunks])
-        self._store.add(doc_id, filename, chunks, embeddings)
-        self._bm25 = None
+        with self._bm25_lock:
+            self._store.add(doc_id, filename, chunks, embeddings)
+            self._bm25 = None
         return AddedDocument(doc_id, filename, chunks=len(chunks), already_indexed=False)
 
     def list_documents(self) -> list[DocumentInfo]:
         return self._store.list_documents()
 
     def delete_document(self, doc_id: str) -> bool:
-        deleted = self._store.delete(doc_id)
-        if deleted:
-            self._bm25 = None
+        with self._bm25_lock:
+            deleted = self._store.delete(doc_id)
+            if deleted:
+                self._bm25 = None
         return deleted
 
     def _keyword_index(self) -> Bm25Index:
-        if self._bm25 is None:
-            self._bm25 = Bm25Index(self._store.all_chunks())
-        return self._bm25
+        with self._bm25_lock:
+            if self._bm25 is None:
+                self._bm25 = Bm25Index(self._store.all_chunks())
+            return self._bm25
 
     def retrieve(
         self, question: str, top_k: int | None = None, mode: SearchMode | None = None

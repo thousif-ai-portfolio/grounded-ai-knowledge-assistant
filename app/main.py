@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict
@@ -10,9 +11,11 @@ from fastapi.responses import StreamingResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth import (
+    DUMMY_HASH,
     InvalidTokenError,
     create_access_token,
     hash_password,
@@ -39,6 +42,8 @@ from app.schemas import (
     UserOut,
 )
 from app.vector_store import ChromaStore
+
+logger = logging.getLogger(__name__)
 
 
 def build_service(settings: Settings) -> RagService:
@@ -117,14 +122,20 @@ def create_app(service: RagService | None = None, settings: Settings | None = No
             raise HTTPException(status.HTTP_409_CONFLICT, "Username is already taken")
         user = User(username=body.username, password_hash=hash_password(body.password))
         db.add(user)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError as exc:  # registered by a parallel request since the check
+            db.rollback()
+            raise HTTPException(status.HTTP_409_CONFLICT, "Username is already taken") from exc
         return UserOut.model_validate(user)
 
     @api.post("/auth/login")
     def login(form: Annotated[OAuth2PasswordRequestForm, Depends()], db: Db) -> TokenOut:
         user = db.scalar(select(User).where(User.username == form.username))
-        # Same message for unknown user and wrong password, so usernames can't be probed.
-        if user is None or not verify_password(form.password, user.password_hash):
+        # Same message and the same hashing work for an unknown user and a wrong password,
+        # so usernames can't be probed by the reply or its timing.
+        password_hash = user.password_hash if user else DUMMY_HASH
+        if not verify_password(form.password, password_hash) or user is None:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong username or password")
         return TokenOut(
             access_token=create_access_token(user.id, jwt_secret, settings.jwt_expire_minutes)
@@ -201,6 +212,10 @@ def create_app(service: RagService | None = None, settings: Settings | None = No
                     yield json.dumps({"type": "answer", **result.model_dump(mode="json")}) + "\n"
             except LLMError as exc:
                 yield json.dumps({"type": "error", "detail": str(exc)}) + "\n"
+            except Exception:  # the 200 is already sent; tell the client instead of cutting off
+                logger.exception("Answering failed")
+                detail = "Something went wrong while answering. Please try again."
+                yield json.dumps({"type": "error", "detail": detail}) + "\n"
 
         return StreamingResponse(events(), media_type="application/x-ndjson")
 

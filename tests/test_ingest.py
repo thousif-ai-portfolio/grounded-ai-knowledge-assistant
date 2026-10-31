@@ -66,3 +66,13 @@ def test_blank_pages_produce_no_chunks():
 def test_overlap_must_be_smaller_than_size():
     with pytest.raises(ValueError):
         chunk_pages([Page(1, "text")], size=50, overlap=50)
+
+
+@pytest.mark.parametrize(
+    "data",
+    ["Café menu".encode("utf-8-sig"), "Café menu".encode("utf-16"), "Café menu".encode("cp1252")],
+)
+def test_text_files_in_common_windows_encodings_are_read_correctly(data):
+    [page] = extract_pages("menu.txt", data)
+
+    assert page.text == "Café menu"
